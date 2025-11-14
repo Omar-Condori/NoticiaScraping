@@ -14,10 +14,10 @@ export default function Button({
   
   const variants = {
     primary: 'bg-accent-primary hover:bg-accent-primary/90 text-white shadow-lg shadow-accent-primary/20',
-    secondary: 'bg-dark-card hover:bg-dark-hover text-gray-200 border border-dark-border',
+    secondary: 'bg-light-card dark:bg-dark-card hover:bg-light-hover dark:hover:bg-dark-hover text-gray-700 dark:text-gray-200 border border-light-border dark:border-dark-border',
     success: 'bg-accent-success hover:bg-accent-success/90 text-white',
     danger: 'bg-accent-danger hover:bg-accent-danger/90 text-white',
-    ghost: 'hover:bg-dark-hover text-gray-300',
+    ghost: 'hover:bg-light-hover dark:hover:bg-dark-hover text-gray-700 dark:text-gray-300',
     error: 'bg-red-500 hover:bg-red-600 text-white' // Agregado para compatibilidad
   };
   

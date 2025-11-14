@@ -45,7 +45,13 @@ export const AppProvider = ({ children }) => {
       const data = await response.json();
 
       if (!response.ok) {
+        console.error('Error en login:', data);
         throw new Error(data.error || 'Error en el login');
+      }
+
+      // Asegurar que el usuario tenga rol
+      if (data.usuario && !data.usuario.rol) {
+        data.usuario.rol = 'usuario';
       }
 
       localStorage.setItem('token', data.access_token);
@@ -56,6 +62,7 @@ export const AppProvider = ({ children }) => {
 
       return { success: true };
     } catch (error) {
+      console.error('Error completo en login:', error);
       return { success: false, error: error.message };
     }
   };
@@ -73,7 +80,13 @@ export const AppProvider = ({ children }) => {
       const data = await response.json();
 
       if (!response.ok) {
+        console.error('Error en registro:', data);
         throw new Error(data.error || 'Error en el registro');
+      }
+
+      // Asegurar que el usuario tenga rol
+      if (data.usuario && !data.usuario.rol) {
+        data.usuario.rol = 'usuario';
       }
 
       localStorage.setItem('token', data.access_token);
@@ -84,6 +97,7 @@ export const AppProvider = ({ children }) => {
 
       return { success: true };
     } catch (error) {
+      console.error('Error completo en registro:', error);
       return { success: false, error: error.message };
     }
   };

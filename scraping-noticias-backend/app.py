@@ -133,11 +133,21 @@ def registrar_usuario():
     try:
         datos = request.get_json()
         
+        # Debug: imprimir datos recibidos
+        print(f"📥 Datos recibidos en registro: {datos}")
+        
         # Validar campos requeridos
-        if not datos or 'nombre_usuario' not in datos or 'email' not in datos or 'contrasena' not in datos:
+        if not datos:
+            return jsonify({
+                'error': 'No se recibieron datos',
+                'campos_requeridos': ['nombre_usuario', 'email', 'contrasena']
+            }), 400
+        
+        if 'nombre_usuario' not in datos or 'email' not in datos or 'contrasena' not in datos:
             return jsonify({
                 'error': 'Faltan campos requeridos',
-                'campos_requeridos': ['nombre_usuario', 'email', 'contrasena']
+                'campos_requeridos': ['nombre_usuario', 'email', 'contrasena'],
+                'datos_recibidos': list(datos.keys()) if datos else []
             }), 400
         
         # Intentar registrar usuario
@@ -147,22 +157,35 @@ def registrar_usuario():
             contrasena=datos['contrasena']
         )
         
+        print(f"📤 Resultado del registro: {resultado}")
+        
         if not resultado['success']:
             return jsonify({
                 'error': resultado['error']
             }), 400
         
-        # Generar token JWT automáticamente después del registro
-        access_token = create_access_token(identity=resultado['usuario']['id'])
+        # Asegurar que el rol esté presente en el usuario
+        usuario_respuesta = resultado['usuario'].copy()
+        if 'rol' not in usuario_respuesta:
+            usuario_respuesta['rol'] = 'usuario'
+        
+        # Generar token JWT automáticamente después del registro (con rol)
+        access_token = create_access_token(
+            identity=usuario_respuesta['id'],
+            additional_claims={'rol': usuario_respuesta.get('rol', 'usuario')}
+        )
         
         return jsonify({
             'success': True,
             'mensaje': '✅ Usuario registrado exitosamente',
-            'usuario': resultado['usuario'],
+            'usuario': usuario_respuesta,
             'access_token': access_token
         }), 201
         
     except Exception as e:
+        print(f"❌ Error en registro: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({
             'error': 'Error en el registro',
             'detalle': str(e)
@@ -182,11 +205,21 @@ def login_usuario():
     try:
         datos = request.get_json()
         
+        # Debug: imprimir datos recibidos
+        print(f"📥 Datos recibidos en login: {datos}")
+        
         # Validar campos requeridos
-        if not datos or 'nombre_usuario' not in datos or 'contrasena' not in datos:
+        if not datos:
+            return jsonify({
+                'error': 'No se recibieron datos',
+                'campos_requeridos': ['nombre_usuario', 'contrasena']
+            }), 400
+        
+        if 'nombre_usuario' not in datos or 'contrasena' not in datos:
             return jsonify({
                 'error': 'Faltan campos requeridos',
-                'campos_requeridos': ['nombre_usuario', 'contrasena']
+                'campos_requeridos': ['nombre_usuario', 'contrasena'],
+                'datos_recibidos': list(datos.keys()) if datos else []
             }), 400
         
         # Intentar autenticar usuario
@@ -195,22 +228,35 @@ def login_usuario():
             contrasena=datos['contrasena']
         )
         
+        print(f"📤 Resultado del login: {resultado}")
+        
         if not resultado['success']:
             return jsonify({
                 'error': resultado['error']
             }), 401
         
-        # Generar token JWT
-        access_token = create_access_token(identity=resultado['usuario']['id'])
+        # Asegurar que el rol esté presente en el usuario
+        usuario_respuesta = resultado['usuario'].copy()
+        if 'rol' not in usuario_respuesta:
+            usuario_respuesta['rol'] = 'usuario'
+        
+        # Generar token JWT con información adicional (rol)
+        access_token = create_access_token(
+            identity=usuario_respuesta['id'],
+            additional_claims={'rol': usuario_respuesta.get('rol', 'usuario')}
+        )
         
         return jsonify({
             'success': True,
             'mensaje': '✅ Login exitoso',
-            'usuario': resultado['usuario'],
+            'usuario': usuario_respuesta,
             'access_token': access_token
         }), 200
         
     except Exception as e:
+        print(f"❌ Error en login: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({
             'error': 'Error en el login',
             'detalle': str(e)
@@ -228,6 +274,11 @@ def obtener_perfil():
         # Obtener ID del usuario desde el token JWT
         usuario_id = get_jwt_identity()
         
+        # Obtener rol del token JWT
+        from flask_jwt_extended import get_jwt
+        claims = get_jwt()
+        rol = claims.get('rol', 'usuario')
+        
         # Buscar usuario en la base de datos
         usuario = auth_manager.obtener_usuario_por_id(usuario_id)
         
@@ -235,6 +286,9 @@ def obtener_perfil():
             return jsonify({
                 'error': 'Usuario no encontrado'
             }), 404
+        
+        # Asegurar que el rol esté en el objeto usuario
+        usuario['rol'] = rol
         
         return jsonify({
             'success': True,
@@ -275,20 +329,26 @@ def ejecutar_scraping():
     guardar = request.args.get('guardar', default='true', type=str).lower() == 'true'
     
     try:
+        # Obtener rol del token JWT
+        from flask_jwt_extended import get_jwt
+        claims = get_jwt()
+        rol = claims.get('rol', 'usuario')
+        es_admin = (rol == 'admin')
+        
         if fuente_id:
-            # Scrapear una fuente específica
-            fuente = scraper.obtener_fuente(fuente_id)
+            # Scrapear una fuente específica (verificar que pertenezca al usuario)
+            fuente = scraper.obtener_fuente(fuente_id, user_id=usuario_id, es_admin=es_admin)
             if not fuente:
                 return jsonify({
-                    'error': 'Fuente no encontrada',
+                    'error': 'Fuente no encontrada o no tienes permiso para acceder a ella',
                     'fuente_id': fuente_id
                 }), 404
             
-            noticias = scraper.scrape_fuente(fuente, limite, guardar)
+            noticias = scraper.scrape_fuente(fuente, limite, guardar, usuario_id)
             mensaje = f'Scraping completado de {fuente["nombre"]}'
         else:
-            # Scrapear todas las fuentes activas
-            noticias = scraper.scrape_todas_fuentes(limite, guardar)
+            # Scrapear todas las fuentes activas del usuario
+            noticias = scraper.scrape_todas_fuentes(limite, guardar, solo_activas=True, user_id=usuario_id)
             mensaje = 'Scraping completado de todas las fuentes'
         
         return jsonify({
@@ -301,6 +361,9 @@ def ejecutar_scraping():
         }), 200
         
     except Exception as e:
+        print(f"❌ Error en ejecutar_scraping: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({
             'error': 'Error ejecutando scraping',
             'detalle': str(e)
@@ -309,9 +372,11 @@ def ejecutar_scraping():
 # ==================== ENDPOINTS DE NOTICIAS ====================
 
 @app.route('/api/v1/noticias', methods=['GET'])
+@jwt_required(optional=True)  # JWT opcional para compatibilidad, pero recomendado
 def obtener_noticias():
     """
     Obtiene noticias guardadas en la base de datos con paginación
+    🔐 Si hay JWT, filtra por usuario. Admin ve todas.
     
     Query params:
         - limite: número máximo de noticias (default: 50)
@@ -324,12 +389,26 @@ def obtener_noticias():
     fuente_id = request.args.get('fuente_id', type=int)
     categoria = request.args.get('categoria', type=str)
     
+    # Obtener usuario y rol del token (si existe)
+    usuario_id = None
+    es_admin = False
+    try:
+        usuario_id = get_jwt_identity()
+        from flask_jwt_extended import get_jwt
+        claims = get_jwt()
+        rol = claims.get('rol', 'usuario')
+        es_admin = (rol == 'admin')
+    except:
+        pass  # No hay token, usuario_id queda None
+    
     try:
         noticias, total = scraper.obtener_noticias_guardadas(
             limite=limite,
             offset=offset,
             fuente_id=fuente_id,
-            categoria=categoria
+            categoria=categoria,
+            user_id=usuario_id,
+            es_admin=es_admin
         )
         
         return jsonify({
@@ -371,13 +450,23 @@ def contar_noticias():
         }), 500
 
 @app.route('/api/v1/noticias', methods=['DELETE'])
+@jwt_required()
 def limpiar_noticias():
-    """Elimina todas las noticias de la BD"""
+    """Elimina noticias de la BD (del usuario autenticado o todas si es admin)"""
     try:
-        scraper.limpiar_noticias()
+        usuario_id = get_jwt_identity()
+        from flask_jwt_extended import get_jwt
+        claims = get_jwt()
+        rol = claims.get('rol', 'usuario')
+        es_admin = (rol == 'admin')
+        
+        scraper.limpiar_noticias(user_id=usuario_id, es_admin=es_admin)
+        
+        mensaje = 'Todas las noticias han sido eliminadas' if es_admin else 'Tus noticias han sido eliminadas'
+        
         return jsonify({
             'success': True,
-            'mensaje': 'Todas las noticias han sido eliminadas'
+            'mensaje': mensaje
         }), 200
     except Exception as e:
         return jsonify({
@@ -388,14 +477,27 @@ def limpiar_noticias():
 # ==================== ENDPOINTS DE CATEGORIAS ====================
 
 @app.route('/api/v1/categorias', methods=['GET'])
+@jwt_required(optional=True)
 def obtener_categorias():
     """
-    Obtiene todas las categorías únicas de noticias
+    Obtiene todas las categorías únicas de noticias (filtrado por usuario si no es admin)
     
     Retorna una lista de strings con las categorías disponibles
     """
+    # Obtener usuario y rol del token (si existe)
+    usuario_id = None
+    es_admin = False
     try:
-        categorias = scraper.obtener_categorias()
+        usuario_id = get_jwt_identity()
+        from flask_jwt_extended import get_jwt
+        claims = get_jwt()
+        rol = claims.get('rol', 'usuario')
+        es_admin = (rol == 'admin')
+    except:
+        pass  # No hay token
+    
+    try:
+        categorias = scraper.obtener_categorias(user_id=usuario_id, es_admin=es_admin)
         
         return jsonify({
             'success': True,
@@ -412,12 +514,25 @@ def obtener_categorias():
 # ==================== ENDPOINTS DE FUENTES ====================
 
 @app.route('/api/v1/fuentes', methods=['GET'])
+@jwt_required(optional=True)
 def listar_fuentes():
-    """Lista todas las fuentes configuradas"""
+    """Lista fuentes configuradas (filtradas por usuario si no es admin)"""
     solo_activas = request.args.get('activas', default='false', type=str).lower() == 'true'
     
+    # Obtener usuario y rol del token (si existe)
+    usuario_id = None
+    es_admin = False
     try:
-        fuentes = scraper.obtener_fuentes(solo_activas=solo_activas)
+        usuario_id = get_jwt_identity()
+        from flask_jwt_extended import get_jwt
+        claims = get_jwt()
+        rol = claims.get('rol', 'usuario')
+        es_admin = (rol == 'admin')
+    except:
+        pass  # No hay token
+    
+    try:
+        fuentes = scraper.obtener_fuentes(solo_activas=solo_activas, user_id=usuario_id, es_admin=es_admin)
         return jsonify({
             'success': True,
             'total': len(fuentes),
@@ -436,10 +551,23 @@ def listar_fuentes():
         }), 500
 
 @app.route('/api/v1/fuentes/<int:id>', methods=['GET'])
+@jwt_required(optional=True)
 def obtener_fuente(id):
-    """Obtiene una fuente específica por ID"""
+    """Obtiene una fuente específica por ID (verifica que pertenezca al usuario si no es admin)"""
+    # Obtener usuario y rol del token (si existe)
+    usuario_id = None
+    es_admin = False
     try:
-        fuente = scraper.obtener_fuente(id)
+        usuario_id = get_jwt_identity()
+        from flask_jwt_extended import get_jwt
+        claims = get_jwt()
+        rol = claims.get('rol', 'usuario')
+        es_admin = (rol == 'admin')
+    except:
+        pass  # No hay token
+    
+    try:
+        fuente = scraper.obtener_fuente(id, user_id=usuario_id, es_admin=es_admin)
         if fuente:
             return jsonify({
                 'success': True,
@@ -447,7 +575,7 @@ def obtener_fuente(id):
             }), 200
         else:
             return jsonify({
-                'error': 'Fuente no encontrada',
+                'error': 'Fuente no encontrada o no tienes permiso para acceder a ella',
                 'fuente_id': id
             }), 404
     except Exception as e:
@@ -458,6 +586,7 @@ def obtener_fuente(id):
 
 # <--- ¡MODIFICACIÓN COMPLETA! Solo requiere nombre y url
 @app.route('/api/v1/fuentes', methods=['POST'])
+@jwt_required()  # ✅ AGREGAR ESTA LÍNEA
 def agregar_fuente():
     """
     Agrega una nueva fuente (SIMPLIFICADO - Solo requiere nombre y url)
@@ -478,6 +607,9 @@ def agregar_fuente():
     - selector_categoria
     """
     try:
+        # Obtener ID del usuario autenticado
+        usuario_id = get_jwt_identity()
+        
         datos = request.get_json()
         
         # <--- ¡MODIFICACIÓN! Solo validar nombre y url
@@ -513,8 +645,8 @@ def agregar_fuente():
             'activo': datos.get('activo', True)
         }
         
-        # Agregar fuente a la base de datos
-        fuente = scraper.agregar_fuente(fuente_completa)
+        # Agregar fuente a la base de datos (asociada al usuario)
+        fuente = scraper.agregar_fuente(fuente_completa, usuario_id)
         
         if fuente:
             return jsonify({
@@ -535,9 +667,10 @@ def agregar_fuente():
         }), 500
 
 @app.route('/api/v1/fuentes/<int:id>', methods=['PUT'])
+@jwt_required()
 def actualizar_fuente(id):
     """
-    Actualiza una fuente existente
+    Actualiza una fuente existente (verifica que pertenezca al usuario si no es admin)
     
     Body JSON (todos los campos son opcionales):
     {
@@ -548,8 +681,17 @@ def actualizar_fuente(id):
     }
     """
     try:
+        # Obtener ID del usuario autenticado
+        usuario_id = get_jwt_identity()
+        
+        # Obtener rol del token JWT
+        from flask_jwt_extended import get_jwt
+        claims = get_jwt()
+        rol = claims.get('rol', 'usuario')
+        es_admin = (rol == 'admin')
+        
         datos = request.get_json()
-        fuente = scraper.actualizar_fuente(id, datos)
+        fuente = scraper.actualizar_fuente(id, datos, user_id=usuario_id, es_admin=es_admin)
         
         if fuente:
             return jsonify({
@@ -570,10 +712,20 @@ def actualizar_fuente(id):
         }), 500
 
 @app.route('/api/v1/fuentes/<int:id>', methods=['DELETE'])
+@jwt_required()
 def eliminar_fuente(id):
-    """Elimina una fuente"""
+    """Elimina una fuente (verifica que pertenezca al usuario si no es admin)"""
     try:
-        resultado = scraper.eliminar_fuente(id)
+        # Obtener ID del usuario autenticado
+        usuario_id = get_jwt_identity()
+        
+        # Obtener rol del token JWT
+        from flask_jwt_extended import get_jwt
+        claims = get_jwt()
+        rol = claims.get('rol', 'usuario')
+        es_admin = (rol == 'admin')
+        
+        resultado = scraper.eliminar_fuente(id, user_id=usuario_id, es_admin=es_admin)
         
         if resultado:
             return jsonify({
@@ -888,6 +1040,7 @@ def buscar_por_palabras_clave():
 # ==================== ENDPOINTS DE EXPORTACIÓN ====================
 
 @app.route('/api/v1/noticias/exportar', methods=['GET'])
+@jwt_required(optional=True)  # JWT opcional pero recomendado
 def exportar_noticias():
     """
     Exporta noticias en diferentes formatos
@@ -906,12 +1059,26 @@ def exportar_noticias():
             'error': 'Formato no válido. Opciones: csv, json, txt'
         }), 400
     
+    # Obtener usuario y rol del token (si existe)
+    usuario_id = None
+    es_admin = False
+    try:
+        usuario_id = get_jwt_identity()
+        from flask_jwt_extended import get_jwt
+        claims = get_jwt()
+        rol = claims.get('rol', 'usuario')
+        es_admin = (rol == 'admin')
+    except:
+        pass  # No hay token
+    
     try:
         # Obtener noticias (retorna tupla: (noticias, total))
         noticias, total = scraper.obtener_noticias_guardadas(
             limite=limite,
             offset=0,
-            fuente_id=fuente_id
+            fuente_id=fuente_id,
+            user_id=usuario_id,
+            es_admin=es_admin
         )
         
         if not noticias or len(noticias) == 0:

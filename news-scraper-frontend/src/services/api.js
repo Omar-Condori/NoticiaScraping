@@ -1,6 +1,6 @@
 const API_URL = 'http://localhost:8001/api/v1';
 
-// ← NUEVO: Función helper para obtener el token
+// Función helper para obtener el token y headers
 const getAuthHeaders = () => {
   const token = localStorage.getItem('token');
   return {
@@ -68,7 +68,9 @@ export const noticiasAPI = {
     if (categoria) params.append('categoria', categoria);
 
     try {
-      const response = await fetch(`${API_URL}/noticias?${params}`);
+      const response = await fetch(`${API_URL}/noticias?${params}`, {
+        headers: getAuthHeaders()
+      });
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
@@ -85,13 +87,16 @@ export const noticiasAPI = {
   },
 
   contar: async () => {
-    const response = await fetch(`${API_URL}/noticias/contar`);
+    const response = await fetch(`${API_URL}/noticias/contar`, {
+      headers: getAuthHeaders()
+    });
     return response.json();
   },
 
   limpiar: async () => {
     const response = await fetch(`${API_URL}/noticias`, {
       method: 'DELETE',
+      headers: getAuthHeaders()
     });
     return response.json();
   },
@@ -103,7 +108,9 @@ export const noticiasAPI = {
     if (fechaDesde) params.append('fecha_desde', fechaDesde);
     if (fechaHasta) params.append('fecha_hasta', fechaHasta);
 
-    const response = await fetch(`${API_URL}/noticias/buscar?${params}`);
+    const response = await fetch(`${API_URL}/noticias/buscar?${params}`, {
+      headers: getAuthHeaders()
+    });
     return response.json();
   },
 
@@ -114,7 +121,12 @@ export const noticiasAPI = {
     });
     if (fuenteId) params.append('fuente_id', fuenteId);
 
-    const response = await fetch(`${API_URL}/noticias/exportar?${params}`);
+    const response = await fetch(`${API_URL}/noticias/exportar?${params}`, {
+      headers: getAuthHeaders()
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
     return response.blob();
   },
 };
@@ -125,7 +137,9 @@ export const noticiasAPI = {
 export const categoriasAPI = {
   obtener: async () => {
     try {
-      const response = await fetch(`${API_URL}/categorias`);
+      const response = await fetch(`${API_URL}/categorias`, {
+        headers: getAuthHeaders()
+      });
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
@@ -149,7 +163,9 @@ export const fuentesAPI = {
     if (soloActivas) params.append('activas', 'true');
 
     try {
-      const response = await fetch(`${API_URL}/fuentes?${params}`);
+      const response = await fetch(`${API_URL}/fuentes?${params}`, {
+        headers: getAuthHeaders()
+      });
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
@@ -166,16 +182,18 @@ export const fuentesAPI = {
   },
 
   obtener: async (id) => {
-    const response = await fetch(`${API_URL}/fuentes/${id}`);
+    const response = await fetch(`${API_URL}/fuentes/${id}`, {
+      headers: getAuthHeaders()
+    });
     return response.json();
   },
 
-  // ← MODIFICADO: Ahora solo requiere nombre y url
+  // ← CORREGIDO: Ahora envía el token JWT
   crear: async (nombre, url) => {
     const response = await fetch(`${API_URL}/fuentes`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nombre, url }), // ← SIMPLIFICADO
+      headers: getAuthHeaders(),  // <-- CORREGIDO: Ahora incluye Authorization
+      body: JSON.stringify({ nombre, url }),
     });
     return response.json();
   },
@@ -183,7 +201,7 @@ export const fuentesAPI = {
   actualizar: async (id, datos) => {
     const response = await fetch(`${API_URL}/fuentes/${id}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders(),
       body: JSON.stringify(datos),
     });
     return response.json();
@@ -192,6 +210,7 @@ export const fuentesAPI = {
   eliminar: async (id) => {
     const response = await fetch(`${API_URL}/fuentes/${id}`, {
       method: 'DELETE',
+      headers: getAuthHeaders(),
     });
     return response.json();
   },
@@ -201,17 +220,23 @@ export const fuentesAPI = {
 
 export const estadisticasAPI = {
   generales: async () => {
-    const response = await fetch(`${API_URL}/estadisticas`);
+    const response = await fetch(`${API_URL}/estadisticas`, {
+      headers: getAuthHeaders()
+    });
     return response.json();
   },
 
   tendencias: async (dias = 7) => {
-    const response = await fetch(`${API_URL}/estadisticas/tendencias?dias=${dias}`);
+    const response = await fetch(`${API_URL}/estadisticas/tendencias?dias=${dias}`, {
+      headers: getAuthHeaders()
+    });
     return response.json();
   },
 
   topFuentes: async (limite = 5) => {
-    const response = await fetch(`${API_URL}/estadisticas/top-fuentes?limite=${limite}`);
+    const response = await fetch(`${API_URL}/estadisticas/top-fuentes?limite=${limite}`, {
+      headers: getAuthHeaders()
+    });
     return response.json();
   },
 };
@@ -220,14 +245,16 @@ export const estadisticasAPI = {
 
 export const schedulerAPI = {
   listarTareas: async () => {
-    const response = await fetch(`${API_URL}/scheduler/tareas`);
+    const response = await fetch(`${API_URL}/scheduler/tareas`, {
+      headers: getAuthHeaders()
+    });
     return response.json();
   },
 
   crearTarea: async (nombre, intervaloMinutos, fuenteId = null, limite = 5) => {
     const response = await fetch(`${API_URL}/scheduler/tareas`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders(),
       body: JSON.stringify({
         nombre,
         intervalo_minutos: intervaloMinutos,
@@ -239,13 +266,16 @@ export const schedulerAPI = {
   },
 
   obtenerTarea: async (nombre) => {
-    const response = await fetch(`${API_URL}/scheduler/tareas/${nombre}`);
+    const response = await fetch(`${API_URL}/scheduler/tareas/${nombre}`, {
+      headers: getAuthHeaders()
+    });
     return response.json();
   },
 
   eliminarTarea: async (nombre) => {
     const response = await fetch(`${API_URL}/scheduler/tareas/${nombre}`, {
       method: 'DELETE',
+      headers: getAuthHeaders()
     });
     return response.json();
   },
@@ -253,6 +283,7 @@ export const schedulerAPI = {
   pausarTarea: async (nombre) => {
     const response = await fetch(`${API_URL}/scheduler/tareas/${nombre}/pausar`, {
       method: 'POST',
+      headers: getAuthHeaders()
     });
     return response.json();
   },
@@ -260,6 +291,7 @@ export const schedulerAPI = {
   reanudarTarea: async (nombre) => {
     const response = await fetch(`${API_URL}/scheduler/tareas/${nombre}/reanudar`, {
       method: 'POST',
+      headers: getAuthHeaders()
     });
     return response.json();
   },

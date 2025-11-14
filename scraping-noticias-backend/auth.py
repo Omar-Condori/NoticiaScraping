@@ -40,10 +40,12 @@ class AuthManager:
         # Intentar crear el usuario
         resultado = self.db.crear_usuario(nombre_usuario, email, contrasena)
         
+        print(f"🔍 Resultado de crear_usuario: {resultado}")
+        
         if resultado is None:
             return {
                 'success': False,
-                'error': 'Error al crear usuario'
+                'error': 'Error al crear usuario. Verifica la conexión a la base de datos.'
             }
         
         if isinstance(resultado, dict) and 'error' in resultado:
@@ -62,6 +64,11 @@ class AuthManager:
                     'success': False,
                     'error': 'Error al crear usuario'
                 }
+        
+        # Asegurar que el rol esté presente
+        if isinstance(resultado, dict):
+            if 'rol' not in resultado:
+                resultado['rol'] = 'usuario'
         
         return {
             'success': True,
@@ -110,6 +117,7 @@ class AuthManager:
             'id': usuario['id'],
             'nombre_usuario': usuario['nombre_usuario'],
             'email': usuario['email'],
+            'rol': usuario.get('rol', 'usuario'),
             'fecha_creacion': str(usuario['fecha_creacion']),
             'activo': usuario['activo']
         }

@@ -128,8 +128,8 @@ export default function Noticias() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-white">Noticias Guardadas</h1>
-          <p className="text-gray-400 mt-1">
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Noticias Guardadas</h1>
+          <p className="text-gray-600 dark:text-gray-400 mt-1">
             {totalNoticias > 0 ? (
               <>Mostrando {noticias.length} de {totalNoticias} noticias (Página {paginaActual} de {totalPaginas})</>
             ) : (
@@ -159,22 +159,22 @@ export default function Noticias() {
       </div>
 
       {/* Filtros */}
-      <div className="bg-dark-card border border-dark-border rounded-xl p-6">
+      <div className="bg-light-card dark:bg-dark-card border border-light-border dark:border-dark-border rounded-xl p-6">
         <div className="flex items-center gap-2 mb-4">
           <Filter className="w-5 h-5 text-accent-primary" />
-          <h2 className="text-lg font-semibold text-white">Filtros</h2>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Filtros</h2>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Selector de Fuente */}
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               Fuente
             </label>
             <select
               value={fuenteSeleccionada}
               onChange={(e) => setFuenteSeleccionada(e.target.value)}
-              className="w-full px-4 py-2 bg-dark-hover border border-dark-border rounded-lg text-white focus:ring-2 focus:ring-accent-primary focus:border-transparent"
+              className="w-full px-4 py-2 bg-light-hover dark:bg-dark-hover border border-light-border dark:border-dark-border rounded-lg text-gray-900 dark:text-white focus:ring-2 focus:ring-accent-primary focus:border-transparent"
             >
               <option value="">Todas las fuentes</option>
               {fuentes.map((fuente) => (
@@ -187,7 +187,7 @@ export default function Noticias() {
 
           {/* Selector de Categoría */}
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               <div className="flex items-center gap-2">
                 <Tag className="w-4 h-4" />
                 Categoría
@@ -196,7 +196,7 @@ export default function Noticias() {
             <select
               value={categoriaSeleccionada}
               onChange={(e) => setCategoriaSeleccionada(e.target.value)}
-              className="w-full px-4 py-2 bg-dark-hover border border-dark-border rounded-lg text-white focus:ring-2 focus:ring-accent-primary focus:border-transparent"
+              className="w-full px-4 py-2 bg-light-hover dark:bg-dark-hover border border-light-border dark:border-dark-border rounded-lg text-gray-900 dark:text-white focus:ring-2 focus:ring-accent-primary focus:border-transparent"
             >
               <option value="">Todas las categorías</option>
               {categorias.map((categoria) => (
@@ -209,13 +209,13 @@ export default function Noticias() {
 
           {/* Límite */}
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               Noticias por página
             </label>
             <select
               value={limite}
               onChange={(e) => setLimite(Number(e.target.value))}
-              className="w-full px-4 py-2 bg-dark-hover border border-dark-border rounded-lg text-white focus:ring-2 focus:ring-accent-primary focus:border-transparent"
+              className="w-full px-4 py-2 bg-light-hover dark:bg-dark-hover border border-light-border dark:border-dark-border rounded-lg text-gray-900 dark:text-white focus:ring-2 focus:ring-accent-primary focus:border-transparent"
             >
               <option value={6}>6</option>
               <option value={12}>12</option>
@@ -245,8 +245,8 @@ export default function Noticias() {
           ))}
         </div>
       ) : noticias.length === 0 ? (
-        <div className="bg-dark-card border border-dark-border rounded-xl p-12 text-center">
-          <p className="text-gray-400 text-lg">No hay noticias disponibles</p>
+        <div className="bg-light-card dark:bg-dark-card border border-light-border dark:border-dark-border rounded-xl p-12 text-center">
+          <p className="text-gray-600 dark:text-gray-400 text-lg">No hay noticias disponibles</p>
         </div>
       ) : (
         <>
@@ -258,8 +258,8 @@ export default function Noticias() {
 
           {/* Paginación */}
           {totalPaginas > 1 && (
-            <div className="flex items-center justify-between mt-8 pt-6 border-t border-dark-border">
-              <div className="text-sm text-gray-400">
+              <div className="flex items-center justify-between mt-8 pt-6 border-t border-light-border dark:border-dark-border">
+              <div className="text-sm text-gray-600 dark:text-gray-400">
                 Página {paginaActual} de {totalPaginas}
               </div>
               
@@ -296,7 +296,7 @@ export default function Noticias() {
                         className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
                           paginaActual === pageNum
                             ? 'bg-accent-primary text-white'
-                            : 'bg-dark-hover text-gray-300 hover:bg-dark-border'
+                            : 'bg-light-hover dark:bg-dark-hover text-gray-700 dark:text-gray-300 hover:bg-light-border dark:hover:bg-dark-border'
                         }`}
                       >
                         {pageNum}

@@ -19,10 +19,8 @@ class NewsScraper:
         print("📊 Verificando base de datos...")
         self.db.crear_tablas()
         
-        # Agregar fuentes de ejemplo si no hay ninguna
-        if not self.db.obtener_fuentes():
-            print("📰 Agregando fuentes de ejemplo...")
-            self._agregar_fuentes_ejemplo()
+        # Nota: Ya no agregamos fuentes de ejemplo automáticamente
+        # Cada usuario debe agregar sus propias fuentes
     
     def _agregar_fuentes_ejemplo(self):
         """Agrega fuentes de noticias de ejemplo"""
@@ -56,25 +54,25 @@ class NewsScraper:
     
     # ==================== GESTIÓN DE FUENTES ====================
     
-    def agregar_fuente(self, fuente: Dict) -> Optional[Dict]:
-        """Agrega una nueva fuente"""
-        return self.db.agregar_fuente(fuente)
+    def agregar_fuente(self, fuente: Dict, user_id: int) -> Optional[Dict]:
+        """Agrega una nueva fuente (asociada a un usuario)"""
+        return self.db.agregar_fuente(fuente, user_id)
     
-    def obtener_fuentes(self, solo_activas: bool = False) -> List[Dict]:
-        """Obtiene todas las fuentes"""
-        return self.db.obtener_fuentes(solo_activas)
+    def obtener_fuentes(self, solo_activas: bool = False, user_id: Optional[int] = None, es_admin: bool = False) -> List[Dict]:
+        """Obtiene fuentes (filtradas por usuario si no es admin)"""
+        return self.db.obtener_fuentes(solo_activas, user_id, es_admin)
     
-    def obtener_fuente(self, fuente_id: int) -> Optional[Dict]:
-        """Obtiene una fuente por ID"""
-        return self.db.obtener_fuente(fuente_id)
+    def obtener_fuente(self, fuente_id: int, user_id: Optional[int] = None, es_admin: bool = False) -> Optional[Dict]:
+        """Obtiene una fuente por ID (verifica que pertenezca al usuario si no es admin)"""
+        return self.db.obtener_fuente(fuente_id, user_id, es_admin)
     
-    def actualizar_fuente(self, fuente_id: int, datos: Dict) -> Optional[Dict]:
-        """Actualiza una fuente"""
-        return self.db.actualizar_fuente(fuente_id, datos)
+    def actualizar_fuente(self, fuente_id: int, datos: Dict, user_id: Optional[int] = None, es_admin: bool = False) -> Optional[Dict]:
+        """Actualiza una fuente (verifica que pertenezca al usuario si no es admin)"""
+        return self.db.actualizar_fuente(fuente_id, datos, user_id, es_admin)
     
-    def eliminar_fuente(self, fuente_id: int) -> bool:
-        """Elimina una fuente"""
-        return self.db.eliminar_fuente(fuente_id)
+    def eliminar_fuente(self, fuente_id: int, user_id: Optional[int] = None, es_admin: bool = False) -> bool:
+        """Elimina una fuente (verifica que pertenezca al usuario si no es admin)"""
+        return self.db.eliminar_fuente(fuente_id, user_id, es_admin)
     
     # ==================== SCRAPING PROFUNDO ====================
     
@@ -266,8 +264,10 @@ class NewsScraper:
     
     # ==================== SCRAPING ====================
     
-    def scrape_fuente(self, fuente: Dict, limite: int = 5, guardar: bool = True) -> List[Dict]:
+    def scrape_fuente(self, fuente: Dict, limite: int = 5, guardar: bool = True, user_id: Optional[int] = None) -> List[Dict]:
         """Scrapea noticias de una fuente específica"""
+        # Guardar user_id temporalmente para usar en guardar_noticia
+        self._current_user_id = user_id
         noticias = []
         
         print(f"🔍 Scrapeando: {fuente['nombre']}")
@@ -652,9 +652,14 @@ class NewsScraper:
                     }
                     
                     if guardar:
-                        noticia_id = self.db.guardar_noticia(noticia)
-                        if noticia_id:
-                            noticia['id'] = noticia_id
+                        # user_id debe ser pasado desde el endpoint
+                        # Por ahora, si no hay user_id, no guardamos (o lanzamos error)
+                        if not hasattr(self, '_current_user_id'):
+                            print(f"   ⚠️ No hay user_id configurado, saltando guardado")
+                        else:
+                            noticia_id = self.db.guardar_noticia(noticia, self._current_user_id)
+                            if noticia_id:
+                                noticia['id'] = noticia_id
                     
                     noticias.append(noticia)
                     imagen_info = f" [Imagen: {'✓' if imagen_url else '✗'}]"
@@ -679,20 +684,34 @@ class NewsScraper:
         
         return noticias
     
-    def scrape_todas_fuentes(self, limite: int = 5, guardar: bool = True, solo_activas: bool = True) -> List[Dict]:
+    def scrape_todas_fuentes(self, limite: int = 5, guardar: bool = True, solo_activas: bool = True, user_id: Optional[int] = None) -> List[Dict]:
         """Scrapea todas las fuentes activas"""
+        # Guardar user_id temporalmente para usar en guardar_noticia
+        self._current_user_id = user_id
         print("\n" + "="*60)
         print("🚀 INICIANDO SCRAPING DE NOTICIAS")
         print("="*60 + "\n")
         
         todas = []
-        fuentes = self.obtener_fuentes(solo_activas=solo_activas)
+        # Obtener solo las fuentes del usuario (o todas si es admin)
+        # Para obtener fuentes del usuario, necesitamos pasar user_id y es_admin
+        # Por ahora, si user_id es None, no scrapeamos nada
+        if user_id is None:
+            print("⚠️ No se puede scrapear sin user_id")
+            return []
+        
+        # Asumimos que no es admin por defecto (el endpoint debería pasar esto)
+        fuentes = self.obtener_fuentes(solo_activas=solo_activas, user_id=user_id, es_admin=False)
+        
+        if not fuentes:
+            print(f"⚠️ No hay fuentes disponibles para el usuario {user_id}")
+            return []
         
         print(f"📋 Total de fuentes a scrapear: {len(fuentes)}\n")
         
         for idx, fuente in enumerate(fuentes, 1):
             print(f"[{idx}/{len(fuentes)}] ", end="")
-            noticias = self.scrape_fuente(fuente, limite, guardar)
+            noticias = self.scrape_fuente(fuente, limite, guardar, user_id)
             todas.extend(noticias)
             
             if idx < len(fuentes):
@@ -710,22 +729,24 @@ class NewsScraper:
     def obtener_noticias_guardadas(
         self, 
         limite: int = 50, 
-        offset: int = 0,  # <--- ¡NUEVO PARÁMETRO!
+        offset: int = 0,
         fuente_id: Optional[int] = None,
-        categoria: Optional[str] = None  # <--- ¡NUEVO PARÁMETRO!
+        categoria: Optional[str] = None,
+        user_id: Optional[int] = None,
+        es_admin: bool = False
     ):
         """Obtiene noticias guardadas en la BD. Retorna (noticias, total)"""
-        return self.db.obtener_noticias(limite, offset, fuente_id, categoria)
+        return self.db.obtener_noticias(limite, offset, fuente_id, categoria, user_id, es_admin)
     
-    def contar_noticias(self) -> int:
-        """Cuenta el total de noticias guardadas"""
-        return self.db.contar_noticias()
+    def contar_noticias(self, user_id: Optional[int] = None, es_admin: bool = False) -> int:
+        """Cuenta el total de noticias guardadas (filtrado por usuario si no es admin)"""
+        return self.db.contar_noticias(user_id, es_admin)
     
-    def limpiar_noticias(self) -> bool:
-        """Elimina todas las noticias de la BD"""
-        return self.db.limpiar_noticias()
+    def limpiar_noticias(self, user_id: Optional[int] = None, es_admin: bool = False) -> bool:
+        """Elimina noticias de la BD (del usuario o todas si es admin)"""
+        return self.db.limpiar_noticias(user_id, es_admin)
     
     # <--- ¡NUEVO MÉTODO! Para obtener categorías
-    def obtener_categorias(self) -> List[str]:
-        """Obtiene todas las categorías únicas"""
-        return self.db.obtener_categorias()
+    def obtener_categorias(self, user_id: Optional[int] = None, es_admin: bool = False) -> List[str]:
+        """Obtiene todas las categorías únicas (filtrado por usuario si no es admin)"""
+        return self.db.obtener_categorias(user_id, es_admin)

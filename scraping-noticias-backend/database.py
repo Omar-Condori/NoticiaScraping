@@ -41,10 +41,36 @@ class Database:
                     nombre_usuario VARCHAR(100) NOT NULL UNIQUE,
                     email VARCHAR(255) NOT NULL UNIQUE,
                     contrasena_hash VARCHAR(255) NOT NULL,
+                    rol VARCHAR(20) DEFAULT 'usuario' CHECK (rol IN ('admin', 'usuario')),
                     fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     activo BOOLEAN DEFAULT TRUE
                 )
             """)
+            
+            # Agregar columna rol si no existe (para bases de datos existentes)
+            try:
+                cursor.execute("""
+                    ALTER TABLE usuarios 
+                    ADD COLUMN IF NOT EXISTS rol VARCHAR(20) DEFAULT 'usuario'
+                """)
+                # Actualizar usuarios existentes sin rol
+                cursor.execute("""
+                    UPDATE usuarios 
+                    SET rol = 'usuario' 
+                    WHERE rol IS NULL
+                """)
+                # Intentar agregar constraint (puede fallar si ya existe)
+                try:
+                    cursor.execute("""
+                        ALTER TABLE usuarios 
+                        ADD CONSTRAINT check_rol 
+                        CHECK (rol IN ('admin', 'usuario'))
+                    """)
+                except:
+                    pass  # La constraint ya existe
+            except Exception as e:
+                print(f"⚠️ Advertencia al agregar columna rol: {e}")
+                pass
             
             # Tabla de fuentes
             cursor.execute("""
@@ -58,10 +84,33 @@ class Database:
                     selector_link JSONB,
                     selector_imagen JSONB,
                     selector_categoria JSONB,
+                    user_id INTEGER REFERENCES usuarios(id) ON DELETE CASCADE,
                     activo BOOLEAN DEFAULT TRUE,
                     fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     fecha_actualizacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
+            """)
+            
+            # Agregar columna user_id si no existe (para bases de datos existentes)
+            try:
+                cursor.execute("""
+                    ALTER TABLE fuentes 
+                    ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES usuarios(id) ON DELETE CASCADE
+                """)
+                # Actualizar fuentes existentes sin user_id (asignar a un usuario admin si existe, o NULL)
+                cursor.execute("""
+                    UPDATE fuentes 
+                    SET user_id = (SELECT id FROM usuarios WHERE rol = 'admin' LIMIT 1)
+                    WHERE user_id IS NULL AND EXISTS (SELECT 1 FROM usuarios WHERE rol = 'admin')
+                """)
+            except Exception as e:
+                print(f"⚠️ Advertencia al agregar columna user_id a fuentes: {e}")
+                pass
+            
+            # Crear índice para mejor rendimiento
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_fuentes_user_id 
+                ON fuentes(user_id)
             """)
             
             # Tabla de noticias
@@ -69,15 +118,39 @@ class Database:
                 CREATE TABLE IF NOT EXISTS noticias (
                     id SERIAL PRIMARY KEY,
                     titulo VARCHAR(512) NOT NULL,
-                    url VARCHAR(1024) NOT NULL UNIQUE,
+                    url VARCHAR(1024) NOT NULL,
                     resumen TEXT,
                     imagen_url VARCHAR(1024),
                     categoria VARCHAR(255),
                     fuente_id INTEGER REFERENCES fuentes(id) ON DELETE CASCADE,
+                    user_id INTEGER REFERENCES usuarios(id) ON DELETE CASCADE,
                     fecha_publicacion TIMESTAMP,
-                    fecha_scraping TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    fecha_scraping TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(url, user_id)
                 )
             """)
+            
+            # Agregar columna user_id si no existe (para bases de datos existentes)
+            try:
+                cursor.execute("""
+                    ALTER TABLE noticias 
+                    ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES usuarios(id) ON DELETE CASCADE
+                """)
+                # Eliminar constraint UNIQUE de url si existe y crear nuevo con user_id
+                try:
+                    cursor.execute("""
+                        ALTER TABLE noticias 
+                        DROP CONSTRAINT IF EXISTS noticias_url_key
+                    """)
+                except:
+                    pass
+                # Crear índice único compuesto
+                cursor.execute("""
+                    CREATE UNIQUE INDEX IF NOT EXISTS idx_noticias_url_user 
+                    ON noticias(url, user_id)
+                """)
+            except:
+                pass
             
             # Agregar columna fecha_publicacion si no existe (para bases de datos existentes)
             try:
@@ -107,6 +180,11 @@ class Database:
             cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_noticias_categoria 
                 ON noticias(categoria)
+            """)
+            
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_noticias_user_id 
+                ON noticias(user_id)
             """)
             
             # Índices para usuarios
@@ -146,28 +224,41 @@ class Database:
         contrasena_hash = generate_password_hash(contrasena)
         
         query = """
-            INSERT INTO usuarios (nombre_usuario, email, contrasena_hash)
-            VALUES (%s, %s, %s)
-            RETURNING id, nombre_usuario, email, fecha_creacion, activo
+            INSERT INTO usuarios (nombre_usuario, email, contrasena_hash, rol)
+            VALUES (%s, %s, %s, 'usuario')
+            RETURNING id, nombre_usuario, email, rol, fecha_creacion, activo
         """
         
         try:
             cursor.execute(query, (nombre_usuario, email, contrasena_hash))
-            usuario = dict(cursor.fetchone())
+            usuario_row = cursor.fetchone()
+            if not usuario_row:
+                print(f"❌ Error: No se pudo crear el usuario (fetchone retornó None)")
+                connection.rollback()
+                return None
+            usuario = dict(usuario_row)
+            # Asegurar que el rol esté presente
+            if 'rol' not in usuario:
+                usuario['rol'] = 'usuario'
             connection.commit()
-            print(f"✅ Usuario '{nombre_usuario}' creado exitosamente")
+            print(f"✅ Usuario '{nombre_usuario}' creado exitosamente con rol: {usuario.get('rol', 'usuario')}")
             return usuario
         except psycopg2.IntegrityError as e:
             connection.rollback()
-            if 'nombre_usuario' in str(e):
+            error_str = str(e)
+            print(f"❌ IntegrityError al crear usuario: {error_str}")
+            if 'nombre_usuario' in error_str or 'usuarios_nombre_usuario_key' in error_str:
                 print(f"❌ Error: El nombre de usuario '{nombre_usuario}' ya existe")
                 return {'error': 'nombre_usuario_existe'}
-            elif 'email' in str(e):
+            elif 'email' in error_str or 'usuarios_email_key' in error_str:
                 print(f"❌ Error: El email '{email}' ya existe")
                 return {'error': 'email_existe'}
-            return {'error': 'constraint_violation'}
+            print(f"❌ Error de integridad desconocido: {error_str}")
+            return {'error': 'constraint_violation', 'detalle': error_str}
         except Exception as e:
             print(f"❌ Error creando usuario: {e}")
+            import traceback
+            traceback.print_exc()
             connection.rollback()
             return None
         finally:
@@ -184,7 +275,7 @@ class Database:
         
         try:
             cursor.execute("""
-                SELECT id, nombre_usuario, email, contrasena_hash, fecha_creacion, activo
+                SELECT id, nombre_usuario, email, contrasena_hash, rol, fecha_creacion, activo
                 FROM usuarios 
                 WHERE nombre_usuario = %s
             """, (nombre_usuario,))
@@ -209,7 +300,7 @@ class Database:
         
         try:
             cursor.execute("""
-                SELECT id, nombre_usuario, email, contrasena_hash, fecha_creacion, activo
+                SELECT id, nombre_usuario, email, contrasena_hash, rol, fecha_creacion, activo
                 FROM usuarios 
                 WHERE email = %s
             """, (email,))
@@ -238,7 +329,7 @@ class Database:
         
         try:
             cursor.execute("""
-                SELECT id, nombre_usuario, email, fecha_creacion, activo
+                SELECT id, nombre_usuario, email, rol, fecha_creacion, activo
                 FROM usuarios 
                 WHERE id = %s
             """, (usuario_id,))
@@ -255,8 +346,8 @@ class Database:
     
     # ==================== OPERACIONES DE FUENTES ====================
     
-    def agregar_fuente(self, fuente: Dict) -> Optional[Dict]:
-        """Agrega una nueva fuente a la BD"""
+    def agregar_fuente(self, fuente: Dict, user_id: int) -> Optional[Dict]:
+        """Agrega una nueva fuente a la BD (asociada a un usuario)"""
         connection = self.get_connection()
         if not connection:
             return None
@@ -264,8 +355,8 @@ class Database:
         cursor = connection.cursor(cursor_factory=RealDictCursor)
         query = """
             INSERT INTO fuentes (nombre, url, selector_contenedor, selector_titulo, 
-                               selector_resumen, selector_link, selector_imagen, selector_categoria, activo)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                               selector_resumen, selector_link, selector_imagen, selector_categoria, user_id, activo)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING *
         """
         
@@ -278,6 +369,7 @@ class Database:
             json.dumps(fuente.get('selector_link', {'name': 'a'})),
             json.dumps(fuente.get('selector_imagen', {'name': 'img'})),
             json.dumps(fuente.get('selector_categoria')),
+            user_id,
             fuente.get('activo', True)
         )
         
@@ -295,32 +387,46 @@ class Database:
             cursor.close()
             connection.close()
     
-    def obtener_fuentes(self, solo_activas: bool = False) -> List[Dict]:
-        """Obtiene todas las fuentes"""
+    def obtener_fuentes(self, solo_activas: bool = False, user_id: Optional[int] = None, es_admin: bool = False) -> List[Dict]:
+        """Obtiene fuentes (filtradas por usuario si no es admin)"""
         connection = self.get_connection()
         if not connection:
             return []
         
         cursor = connection.cursor(cursor_factory=RealDictCursor)
         
+        # Construir query con filtros
+        where_clauses = []
+        params = []
+        
+        # Filtrar por usuario (admin ve todas)
+        if not es_admin and user_id is not None:
+            where_clauses.append("user_id = %s")
+            params.append(int(user_id))
+        
+        # Filtrar por activas
         if solo_activas:
-            query = "SELECT * FROM fuentes WHERE activo = TRUE ORDER BY id"
-        else:
-            query = "SELECT * FROM fuentes ORDER BY id"
+            where_clauses.append("activo = TRUE")
+        
+        # Construir query final
+        where_clause = " WHERE " + " AND ".join(where_clauses) if where_clauses else ""
+        query = f"SELECT * FROM fuentes{where_clause} ORDER BY id"
         
         try:
-            cursor.execute(query)
+            cursor.execute(query, params)
             fuentes = [dict(row) for row in cursor.fetchall()]
             return fuentes
         except Exception as e:
             print(f"❌ Error obteniendo fuentes: {e}")
+            import traceback
+            traceback.print_exc()
             return []
         finally:
             cursor.close()
             connection.close()
     
-    def obtener_fuente(self, fuente_id: int) -> Optional[Dict]:
-        """Obtiene una fuente por ID"""
+    def obtener_fuente(self, fuente_id: int, user_id: Optional[int] = None, es_admin: bool = False) -> Optional[Dict]:
+        """Obtiene una fuente por ID (verifica que pertenezca al usuario si no es admin)"""
         connection = self.get_connection()
         if not connection:
             return None
@@ -328,23 +434,42 @@ class Database:
         cursor = connection.cursor(cursor_factory=RealDictCursor)
         
         try:
-            cursor.execute("SELECT * FROM fuentes WHERE id = %s", (fuente_id,))
+            # Si es admin, puede ver cualquier fuente
+            if es_admin:
+                cursor.execute("SELECT * FROM fuentes WHERE id = %s", (fuente_id,))
+            elif user_id is not None:
+                # Usuario normal solo puede ver sus propias fuentes
+                cursor.execute("SELECT * FROM fuentes WHERE id = %s AND user_id = %s", (fuente_id, int(user_id)))
+            else:
+                # Sin user_id, no puede ver nada
+                return None
+            
             fuente = cursor.fetchone()
             return dict(fuente) if fuente else None
         except Exception as e:
             print(f"❌ Error obteniendo fuente: {e}")
+            import traceback
+            traceback.print_exc()
             return None
         finally:
             cursor.close()
             connection.close()
     
-    def actualizar_fuente(self, fuente_id: int, datos: Dict) -> Optional[Dict]:
-        """Actualiza una fuente existente"""
+    def actualizar_fuente(self, fuente_id: int, datos: Dict, user_id: Optional[int] = None, es_admin: bool = False) -> Optional[Dict]:
+        """Actualiza una fuente existente (verifica que pertenezca al usuario si no es admin)"""
         connection = self.get_connection()
         if not connection:
             return None
         
         cursor = connection.cursor()
+        
+        # Verificar que la fuente pertenezca al usuario (si no es admin)
+        if not es_admin and user_id is not None:
+            cursor.execute("SELECT user_id FROM fuentes WHERE id = %s", (fuente_id,))
+            resultado = cursor.fetchone()
+            if not resultado or resultado[0] != user_id:
+                print(f"❌ Usuario {user_id} no tiene permiso para actualizar fuente {fuente_id}")
+                return None
         
         campos = []
         valores = []
@@ -389,7 +514,7 @@ class Database:
             cursor.execute(query, valores)
             connection.commit()
             print(f"✅ Fuente ID {fuente_id} actualizada")
-            return self.obtener_fuente(fuente_id)
+            return self.obtener_fuente(fuente_id, user_id, es_admin)
         except Exception as e:
             print(f"❌ Error actualizando fuente: {e}")
             connection.rollback()
@@ -398,8 +523,8 @@ class Database:
             cursor.close()
             connection.close()
     
-    def eliminar_fuente(self, fuente_id: int) -> bool:
-        """Elimina una fuente"""
+    def eliminar_fuente(self, fuente_id: int, user_id: Optional[int] = None, es_admin: bool = False) -> bool:
+        """Elimina una fuente (verifica que pertenezca al usuario si no es admin)"""
         connection = self.get_connection()
         if not connection:
             return False
@@ -407,6 +532,14 @@ class Database:
         cursor = connection.cursor()
         
         try:
+            # Verificar que la fuente pertenezca al usuario (si no es admin)
+            if not es_admin and user_id is not None:
+                cursor.execute("SELECT user_id FROM fuentes WHERE id = %s", (fuente_id,))
+                resultado = cursor.fetchone()
+                if not resultado or resultado[0] != user_id:
+                    print(f"❌ Usuario {user_id} no tiene permiso para eliminar fuente {fuente_id}")
+                    return False
+            
             cursor.execute("DELETE FROM fuentes WHERE id = %s", (fuente_id,))
             connection.commit()
             success = cursor.rowcount > 0
@@ -423,17 +556,17 @@ class Database:
     
     # ==================== OPERACIONES DE NOTICIAS ====================
     
-    def guardar_noticia(self, noticia: Dict) -> Optional[int]:
-        """Guarda una noticia en la BD (evita duplicados por URL)"""
+    def guardar_noticia(self, noticia: Dict, user_id: int) -> Optional[int]:
+        """Guarda una noticia en la BD (evita duplicados por URL+user_id)"""
         connection = self.get_connection()
         if not connection:
             return None
         
         cursor = connection.cursor()
         query = """
-            INSERT INTO noticias (titulo, url, resumen, imagen_url, categoria, fuente_id, fecha_publicacion)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (url) DO UPDATE SET 
+            INSERT INTO noticias (titulo, url, resumen, imagen_url, categoria, fuente_id, user_id, fecha_publicacion)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (url, user_id) DO UPDATE SET 
                 titulo = EXCLUDED.titulo,
                 resumen = EXCLUDED.resumen,
                 imagen_url = EXCLUDED.imagen_url,
@@ -450,6 +583,7 @@ class Database:
             noticia.get('imagen_url'),
             noticia.get('categoria'),
             noticia.get('fuente_id'),
+            user_id,
             noticia.get('fecha_publicacion')
         )
         
@@ -471,7 +605,9 @@ class Database:
         limite: int = 50, 
         offset: int = 0,
         fuente_id: Optional[int] = None,
-        categoria: Optional[str] = None
+        categoria: Optional[str] = None,
+        user_id: Optional[int] = None,
+        es_admin: bool = False
     ):
         """Obtiene noticias de la BD con paginación y filtros. Retorna (noticias, total)"""
         connection = self.get_connection()
@@ -483,6 +619,11 @@ class Database:
         # Construir query base para contar y obtener
         where_clause = "WHERE 1=1"
         parametros = []
+        
+        # Filtrar por usuario (admin ve todas)
+        if not es_admin and user_id is not None:
+            where_clause += " AND n.user_id = %s"
+            parametros.append(int(user_id))
         
         if fuente_id is not None:
             where_clause += " AND n.fuente_id = %s"
@@ -535,15 +676,23 @@ class Database:
             cursor.close()
             connection.close()
     
-    def contar_noticias(self) -> int:
-        """Cuenta el total de noticias en la BD"""
+    def contar_noticias(self, user_id: Optional[int] = None, es_admin: bool = False) -> int:
+        """Cuenta el total de noticias en la BD (filtrado por usuario si no es admin)"""
         connection = self.get_connection()
         if not connection:
             return 0
         
         cursor = connection.cursor()
         try:
-            cursor.execute("SELECT COUNT(*) FROM noticias")
+            query = "SELECT COUNT(*) FROM noticias"
+            params = []
+            
+            # Filtrar por usuario si no es admin
+            if not es_admin and user_id is not None:
+                query += " WHERE user_id = %s"
+                params.append(int(user_id))
+            
+            cursor.execute(query, params)
             count = cursor.fetchone()[0]
             return count
         except Exception as e:
@@ -553,17 +702,25 @@ class Database:
             cursor.close()
             connection.close()
     
-    def limpiar_noticias(self) -> bool:
-        """Elimina todas las noticias (útil para pruebas)"""
+    def limpiar_noticias(self, user_id: Optional[int] = None, es_admin: bool = False) -> bool:
+        """Elimina noticias (del usuario o todas si es admin)"""
         connection = self.get_connection()
         if not connection:
             return False
         
         cursor = connection.cursor()
         try:
-            cursor.execute("DELETE FROM noticias")
+            if es_admin:
+                cursor.execute("DELETE FROM noticias")
+                print("✅ Todas las noticias eliminadas (admin)")
+            elif user_id is not None:
+                cursor.execute("DELETE FROM noticias WHERE user_id = %s", (int(user_id),))
+                print(f"✅ Noticias del usuario {user_id} eliminadas")
+            else:
+                print("⚠️ No se puede limpiar: falta user_id o permisos de admin")
+                return False
+            
             connection.commit()
-            print("✅ Todas las noticias eliminadas")
             return True
         except Exception as e:
             print(f"❌ Error limpiando noticias: {e}")
@@ -573,8 +730,8 @@ class Database:
             cursor.close()
             connection.close()
     
-    def obtener_categorias(self) -> List[str]:
-        """Obtiene todas las categorías únicas de noticias"""
+    def obtener_categorias(self, user_id: Optional[int] = None, es_admin: bool = False) -> List[str]:
+        """Obtiene todas las categorías únicas de noticias (filtrado por usuario si no es admin)"""
         connection = self.get_connection()
         if not connection:
             return []
@@ -582,13 +739,21 @@ class Database:
         cursor = connection.cursor()
         
         try:
-            cursor.execute("""
+            query = """
                 SELECT DISTINCT categoria 
                 FROM noticias 
-                WHERE categoria IS NOT NULL 
-                ORDER BY categoria
-            """)
+                WHERE categoria IS NOT NULL
+            """
+            params = []
             
+            # Filtrar por usuario si no es admin
+            if not es_admin and user_id is not None:
+                query += " AND user_id = %s"
+                params.append(int(user_id))
+            
+            query += " ORDER BY categoria"
+            
+            cursor.execute(query, params)
             categorias = [row[0] for row in cursor.fetchall()]
             return categorias
             

@@ -9,20 +9,20 @@ export default function Input({
   return (
     <div className="space-y-2">
       {label && (
-        <label className="block text-sm font-medium text-gray-300">
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
           {label}
         </label>
       )}
       <div className="relative">
         {Icon && (
           <div className="absolute left-3 top-1/2 -translate-y-1/2">
-            <Icon className="w-5 h-5 text-gray-400" />
+            <Icon className="w-5 h-5 text-gray-500 dark:text-gray-400" />
           </div>
         )}
         <input
           className={`
-            w-full bg-dark-hover border border-dark-border rounded-lg 
-            px-4 py-2.5 text-white placeholder-gray-500
+            w-full bg-light-hover dark:bg-dark-hover border border-light-border dark:border-dark-border rounded-lg 
+            px-4 py-2.5 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400
             focus:outline-none focus:ring-2 focus:ring-accent-primary/50 focus:border-accent-primary
             transition-all duration-200
             ${Icon ? 'pl-11' : ''}
@@ -44,7 +44,7 @@ export function Select({ label, error, className = '', children, ...props }) {
   return (
     <div className="space-y-2">
       {label && (
-        <label className="block text-sm font-medium text-gray-300">
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
           {label}
         </label>
       )}
@@ -72,7 +72,7 @@ export function Textarea({ label, error, className = '', ...props }) {
   return (
     <div className="space-y-2">
       {label && (
-        <label className="block text-sm font-medium text-gray-300">
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
           {label}
         </label>
       )}

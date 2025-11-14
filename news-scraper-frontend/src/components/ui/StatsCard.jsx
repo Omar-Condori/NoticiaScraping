@@ -2,7 +2,7 @@
 export function Card({ children, className = '', hover = false }) {
   return (
     <div className={`
-      bg-dark-card border border-dark-border rounded-xl p-6
+      bg-light-card dark:bg-dark-card border border-light-border dark:border-dark-border rounded-xl p-6
       ${hover ? 'hover:border-accent-primary/50 transition-all duration-300' : ''}
       ${className}
     `}>
@@ -23,7 +23,7 @@ export function CardHeader({ children, className = '' }) {
 // Título del Card
 export function CardTitle({ children, className = '' }) {
   return (
-    <h3 className={`text-lg font-semibold text-white ${className}`}>
+    <h3 className={`text-lg font-semibold text-gray-900 dark:text-white ${className}`}>
       {children}
     </h3>
   );
@@ -32,7 +32,7 @@ export function CardTitle({ children, className = '' }) {
 // Descripción del Card
 export function CardDescription({ children, className = '' }) {
   return (
-    <p className={`text-sm text-gray-400 mt-1 ${className}`}>
+    <p className={`text-sm text-gray-600 dark:text-gray-400 mt-1 ${className}`}>
       {children}
     </p>
   );
