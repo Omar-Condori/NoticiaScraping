@@ -907,10 +907,14 @@ def exportar_noticias():
         }), 400
     
     try:
-        # Obtener noticias
-        noticias = scraper.obtener_noticias_guardadas(limite, 0, fuente_id)
+        # Obtener noticias (retorna tupla: (noticias, total))
+        noticias, total = scraper.obtener_noticias_guardadas(
+            limite=limite,
+            offset=0,
+            fuente_id=fuente_id
+        )
         
-        if not noticias:
+        if not noticias or len(noticias) == 0:
             return jsonify({
                 'error': 'No hay noticias para exportar'
             }), 404
@@ -939,6 +943,9 @@ def exportar_noticias():
         )
         
     except Exception as e:
+        print(f"❌ Error en exportar_noticias: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({
             'error': 'Error exportando noticias',
             'detalle': str(e)

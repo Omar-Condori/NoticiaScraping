@@ -14,14 +14,24 @@ class Exportador:
         if not noticias:
             return ""
         
-        # Definir columnas
-        columnas = ['id', 'titulo', 'url', 'resumen', 'fuente', 'fecha_scraping']
+        # Definir columnas (incluir todas las posibles)
+        columnas = ['id', 'titulo', 'url', 'resumen', 'fuente', 'fecha_scraping', 
+                   'fecha_publicacion', 'categoria', 'imagen_url']
         
         writer = csv.DictWriter(output, fieldnames=columnas, extrasaction='ignore')
         writer.writeheader()
         
         for noticia in noticias:
-            writer.writerow(noticia)
+            # Asegurar que noticia es un diccionario
+            if not isinstance(noticia, dict):
+                noticia = dict(noticia)
+            
+            # Preparar fila con valores por defecto
+            fila = {}
+            for col in columnas:
+                fila[col] = noticia.get(col, '')
+            
+            writer.writerow(fila)
         
         return output.getvalue()
     
