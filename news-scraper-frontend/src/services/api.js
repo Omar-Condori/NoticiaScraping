@@ -10,7 +10,6 @@ const getAuthHeaders = () => {
 };
 
 // ==================== AUTENTICACIÓN ====================
-// ← NUEVO: Endpoints de autenticación
 
 export const authAPI = {
   login: async (nombre_usuario, contrasena) => {
@@ -40,7 +39,6 @@ export const authAPI = {
 };
 
 // ==================== SCRAPING ====================
-// ← MODIFICADO: Ahora incluye Authorization header
 
 export const scrapingAPI = {
   ejecutar: async (limite = 5, fuenteId = null) => {
@@ -49,14 +47,13 @@ export const scrapingAPI = {
 
     const response = await fetch(`${API_URL}/scraping/ejecutar?${params}`, {
       method: 'POST',
-      headers: getAuthHeaders(), // ← MODIFICADO: Ahora incluye JWT
+      headers: getAuthHeaders(),
     });
     return response.json();
   },
 };
 
 // ==================== NOTICIAS ====================
-// ← MODIFICADO: Añadir parámetros de categoría
 
 export const noticiasAPI = {
   obtener: async (limite = 50, offset = 0, fuenteId = null, categoria = null) => {
@@ -132,7 +129,6 @@ export const noticiasAPI = {
 };
 
 // ==================== CATEGORÍAS ====================
-// ← NUEVO: Endpoints de categorías
 
 export const categoriasAPI = {
   obtener: async () => {
@@ -188,11 +184,10 @@ export const fuentesAPI = {
     return response.json();
   },
 
-  // ← CORREGIDO: Ahora envía el token JWT
   crear: async (nombre, url) => {
     const response = await fetch(`${API_URL}/fuentes`, {
       method: 'POST',
-      headers: getAuthHeaders(),  // <-- CORREGIDO: Ahora incluye Authorization
+      headers: getAuthHeaders(),
       body: JSON.stringify({ nombre, url }),
     });
     return response.json();
@@ -295,4 +290,116 @@ export const schedulerAPI = {
     });
     return response.json();
   },
+};
+
+// ==================== PLANES Y SUSCRIPCIONES ====================
+
+// Obtener todos los planes disponibles
+export const obtenerPlanes = async () => {
+  try {
+    const response = await fetch(`${API_URL}/planes`, {
+      headers: getAuthHeaders()
+    });
+    return await response.json();
+  } catch (error) {
+    console.error('Error obteniendo planes:', error);
+    throw error;
+  }
+};
+
+// Obtener mi plan actual
+export const obtenerMiPlan = async () => {
+  try {
+    const response = await fetch(`${API_URL}/suscripciones/mi-plan`, {
+      headers: getAuthHeaders()
+    });
+    return await response.json();
+  } catch (error) {
+    console.error('Error obteniendo mi plan:', error);
+    throw error;
+  }
+};
+
+// Cambiar de plan
+export const cambiarPlan = async (planId, pagoId) => {
+  try {
+    const response = await fetch(`${API_URL}/suscripciones/cambiar`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        plan_id: planId,
+        pago_id: pagoId
+      })
+    });
+    return await response.json();
+  } catch (error) {
+    console.error('Error cambiando plan:', error);
+    throw error;
+  }
+};
+
+// ==================== PAGOS ====================
+
+// Crear un pago
+export const crearPago = async (planId, metodoPago) => {
+  try {
+    const response = await fetch(`${API_URL}/pagos/crear`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        plan_id: planId,
+        metodo_pago: metodoPago
+      })
+    });
+    return await response.json();
+  } catch (error) {
+    console.error('Error creando pago:', error);
+    throw error;
+  }
+};
+
+// Verificar pago de Yape
+export const verificarPagoYape = async (pagoId, comprobanteImg = null) => {
+  try {
+    const response = await fetch(`${API_URL}/pagos/verificar-yape`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        pago_id: pagoId,
+        comprobante_img: comprobanteImg
+      })
+    });
+    return await response.json();
+  } catch (error) {
+    console.error('Error verificando pago Yape:', error);
+    throw error;
+  }
+};
+
+// Obtener historial de pagos
+export const obtenerMisPagos = async () => {
+  try {
+    const response = await fetch(`${API_URL}/pagos/mis-pagos`, {
+      headers: getAuthHeaders()
+    });
+    return await response.json();
+  } catch (error) {
+    console.error('Error obteniendo pagos:', error);
+    throw error;
+  }
+};
+
+// ==================== ESTADÍSTICAS DE SCRAPING ====================
+
+// Obtener estadísticas de scraping del usuario
+export const obtenerEstadisticasScraping = async () => {
+  try {
+    const response = await fetch(`${API_URL}/scraping/estadisticas`, {
+      headers: getAuthHeaders()
+    });
+    return await response.json();
+  } catch (error) {
+    console.error('Error obteniendo estadísticas de scraping:', error);
+    throw error;
+  }
 };

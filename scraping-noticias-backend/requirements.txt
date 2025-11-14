@@ -20,3 +20,14 @@ urllib3==2.5.0
 Werkzeug==3.1.3
 APScheduler==3.10.4
 PyJWT==2.9.0
+
+# ==================== NUEVAS DEPENDENCIAS PARA PAGOS ====================
+# QR para Yape
+qrcode==7.4.2
+Pillow==10.4.0
+
+# PayPal
+paypalrestsdk==1.13.1
+
+# Stripe
+stripe==10.12.0

@@ -14,6 +14,7 @@ import {
   Sun,
   Moon,
   Shield,
+  Crown, // <--- AGREGADO
 } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
 
@@ -24,6 +25,7 @@ const navigation = [
   { name: 'Scheduler', path: '/scheduler', icon: Clock },
   { name: 'Estadísticas', path: '/estadisticas', icon: BarChart3 },
   { name: 'Búsqueda', path: '/busqueda', icon: Search },
+  { name: 'Planes', path: '/planes', icon: Crown }, // <--- AGREGADO
 ];
 
 export default function Layout() {
@@ -88,7 +90,7 @@ export default function Layout() {
           })}
         </nav>
 
-        {/* ← NUEVO: Info del usuario y botón de logout */}
+        {/* Info del usuario y botón de logout */}
         <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-light-border dark:border-dark-border">
           <div className="bg-light-hover dark:bg-dark-hover rounded-lg p-3">
             <div className="flex items-center gap-3 mb-3">

@@ -18,6 +18,12 @@ export const AppProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
+  // ==================== ESTADO DE PLANES ====================
+  const [planActual, setPlanActual] = useState(null);
+  const [limiteFuentes, setLimiteFuentes] = useState(null);
+  const [limiteScraping, setLimiteScraping] = useState(null);
+  const [loadingPlan, setLoadingPlan] = useState(false);
+
   // Cargar token y usuario desde localStorage al iniciar
   useEffect(() => {
     const storedToken = localStorage.getItem('token');
@@ -29,6 +35,13 @@ export const AppProvider = ({ children }) => {
     }
     setLoading(false);
   }, []);
+
+  // Cargar información del plan cuando el usuario inicia sesión
+  useEffect(() => {
+    if (user && token) {
+      cargarInformacionPlan();
+    }
+  }, [user, token]);
 
   // ==================== FUNCIONES DE AUTENTICACIÓN ====================
   
@@ -107,6 +120,9 @@ export const AppProvider = ({ children }) => {
     localStorage.removeItem('user');
     setToken(null);
     setUser(null);
+    setPlanActual(null);
+    setLimiteFuentes(null);
+    setLimiteScraping(null);
     navigate('/login');
   };
 
@@ -135,6 +151,48 @@ export const AppProvider = ({ children }) => {
     }
   };
 
+  // ==================== FUNCIONES DE PLANES ====================
+
+  const cargarInformacionPlan = async () => {
+    if (!token) return;
+
+    setLoadingPlan(true);
+    try {
+      // Obtener plan actual
+      const responsePlan = await fetch('http://localhost:8001/api/v1/suscripciones/mi-plan', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (responsePlan.ok) {
+        const dataPlan = await responsePlan.json();
+        setPlanActual(dataPlan.suscripcion);
+        setLimiteFuentes(dataPlan.limite_info);
+      }
+
+      // Obtener estadísticas de scraping
+      const responseStats = await fetch('http://localhost:8001/api/v1/scraping/estadisticas', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (responseStats.ok) {
+        const dataStats = await responseStats.json();
+        setLimiteScraping(dataStats);
+      }
+    } catch (error) {
+      console.error('Error cargando información del plan:', error);
+    } finally {
+      setLoadingPlan(false);
+    }
+  };
+
+  const actualizarPlan = async () => {
+    await cargarInformacionPlan();
+  };
+
   const value = {
     // Autenticación
     user,
@@ -145,6 +203,14 @@ export const AppProvider = ({ children }) => {
     logout,
     getProfile,
     isAuthenticated: !!token,
+    
+    // Planes y límites
+    planActual,
+    limiteFuentes,
+    limiteScraping,
+    loadingPlan,
+    cargarInformacionPlan,
+    actualizarPlan,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

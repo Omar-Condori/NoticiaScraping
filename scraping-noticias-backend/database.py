@@ -24,8 +24,10 @@ class Database:
             print(f"❌ Error conectando a PostgreSQL: {e}")
             return None
     
+    # ==================== OPERACIONES DE ESQUEMA ====================
+    
     def crear_tablas(self):
-        """Crea las tablas necesarias si no existen"""
+        """Crea las tablas necesarias si no existen (usuarios, fuentes, noticias, planes, suscripciones, pagos)"""
         connection = self.get_connection()
         if not connection:
             print("❌ No se pudo conectar a la base de datos")
@@ -34,7 +36,7 @@ class Database:
         cursor = connection.cursor()
         
         try:
-            # <--- ¡NUEVA TABLA! Usuarios para autenticación
+            # --- TABLA: usuarios
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS usuarios (
                     id SERIAL PRIMARY KEY,
@@ -47,19 +49,13 @@ class Database:
                 )
             """)
             
-            # Agregar columna rol si no existe (para bases de datos existentes)
+            # Agregado de columna rol si no existe (para bases de datos existentes)
             try:
                 cursor.execute("""
                     ALTER TABLE usuarios 
                     ADD COLUMN IF NOT EXISTS rol VARCHAR(20) DEFAULT 'usuario'
                 """)
-                # Actualizar usuarios existentes sin rol
-                cursor.execute("""
-                    UPDATE usuarios 
-                    SET rol = 'usuario' 
-                    WHERE rol IS NULL
-                """)
-                # Intentar agregar constraint (puede fallar si ya existe)
+                cursor.execute("UPDATE usuarios SET rol = 'usuario' WHERE rol IS NULL")
                 try:
                     cursor.execute("""
                         ALTER TABLE usuarios 
@@ -67,12 +63,56 @@ class Database:
                         CHECK (rol IN ('admin', 'usuario'))
                     """)
                 except:
-                    pass  # La constraint ya existe
+                    pass
             except Exception as e:
-                print(f"⚠️ Advertencia al agregar columna rol: {e}")
+                print(f"⚠️ Advertencia al agregar columna rol a usuarios: {e}")
                 pass
             
-            # Tabla de fuentes
+            # --- TABLA: planes
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS planes (
+                    id SERIAL PRIMARY KEY,
+                    nombre VARCHAR(100) NOT NULL UNIQUE,
+                    precio NUMERIC(10, 2) NOT NULL,
+                    limite_fuentes INTEGER NOT NULL DEFAULT 5, -- -1 para ilimitado
+                    descripcion TEXT,
+                    activo BOOLEAN DEFAULT TRUE,
+                    fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
+            # --- TABLA: suscripciones
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS suscripciones (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER REFERENCES usuarios(id) ON DELETE CASCADE,
+                    plan_id INTEGER REFERENCES planes(id) ON DELETE RESTRICT,
+                    fecha_inicio TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    fecha_vencimiento TIMESTAMP NOT NULL,
+                    activo BOOLEAN DEFAULT TRUE,
+                    cancelado BOOLEAN DEFAULT FALSE,
+                    UNIQUE(user_id, activo)
+                )
+            """)
+            
+            # --- TABLA: pagos
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS pagos (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER REFERENCES usuarios(id) ON DELETE CASCADE,
+                    plan_id INTEGER REFERENCES planes(id) ON DELETE RESTRICT,
+                    metodo_pago VARCHAR(50) NOT NULL,
+                    monto NUMERIC(10, 2) NOT NULL,
+                    referencia_pago VARCHAR(255) UNIQUE,
+                    datos_pago JSONB,
+                    estado VARCHAR(20) DEFAULT 'pendiente' CHECK (estado IN ('pendiente', 'completado', 'fallido', 'reembolsado')),
+                    fecha_pago TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    fecha_verificacion TIMESTAMP,
+                    verificado_por INTEGER REFERENCES usuarios(id) ON DELETE SET NULL
+                )
+            """)
+            
+            # --- TABLA: fuentes
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS fuentes (
                     id SERIAL PRIMARY KEY,
@@ -91,13 +131,12 @@ class Database:
                 )
             """)
             
-            # Agregar columna user_id si no existe (para bases de datos existentes)
+            # Agregado de columna user_id si no existe a fuentes
             try:
                 cursor.execute("""
                     ALTER TABLE fuentes 
                     ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES usuarios(id) ON DELETE CASCADE
                 """)
-                # Actualizar fuentes existentes sin user_id (asignar a un usuario admin si existe, o NULL)
                 cursor.execute("""
                     UPDATE fuentes 
                     SET user_id = (SELECT id FROM usuarios WHERE rol = 'admin' LIMIT 1)
@@ -107,13 +146,7 @@ class Database:
                 print(f"⚠️ Advertencia al agregar columna user_id a fuentes: {e}")
                 pass
             
-            # Crear índice para mejor rendimiento
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_fuentes_user_id 
-                ON fuentes(user_id)
-            """)
-            
-            # Tabla de noticias
+            # --- TABLA: noticias
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS noticias (
                     id SERIAL PRIMARY KEY,
@@ -130,13 +163,12 @@ class Database:
                 )
             """)
             
-            # Agregar columna user_id si no existe (para bases de datos existentes)
+            # Agregado de columna user_id y UNIQUE constraint si no existe a noticias
             try:
                 cursor.execute("""
                     ALTER TABLE noticias 
                     ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES usuarios(id) ON DELETE CASCADE
                 """)
-                # Eliminar constraint UNIQUE de url si existe y crear nuevo con user_id
                 try:
                     cursor.execute("""
                         ALTER TABLE noticias 
@@ -144,7 +176,6 @@ class Database:
                     """)
                 except:
                     pass
-                # Crear índice único compuesto
                 cursor.execute("""
                     CREATE UNIQUE INDEX IF NOT EXISTS idx_noticias_url_user 
                     ON noticias(url, user_id)
@@ -152,54 +183,28 @@ class Database:
             except:
                 pass
             
-            # Agregar columna fecha_publicacion si no existe (para bases de datos existentes)
+            # Agregado de columna fecha_publicacion si no existe a noticias
             try:
                 cursor.execute("""
                     ALTER TABLE noticias 
                     ADD COLUMN IF NOT EXISTS fecha_publicacion TIMESTAMP
                 """)
             except:
-                pass  # La columna ya existe o no se puede agregar
+                pass
             
-            # Crear índices para mejor rendimiento
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_noticias_fuente 
-                ON noticias(fuente_id)
-            """)
-            
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_noticias_fecha 
-                ON noticias(fecha_scraping DESC)
-            """)
-            
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_noticias_url 
-                ON noticias(url)
-            """)
-            
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_noticias_categoria 
-                ON noticias(categoria)
-            """)
-            
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_noticias_user_id 
-                ON noticias(user_id)
-            """)
-            
-            # Índices para usuarios
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_usuarios_nombre_usuario 
-                ON usuarios(nombre_usuario)
-            """)
-            
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_usuarios_email 
-                ON usuarios(email)
-            """)
+            # --- Índices ---
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_fuentes_user_id ON fuentes(user_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_noticias_fuente ON noticias(fuente_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_noticias_fecha ON noticias(fecha_scraping DESC)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_noticias_url ON noticias(url)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_noticias_categoria ON noticias(categoria)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_noticias_user_id ON noticias(user_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_usuarios_nombre_usuario ON usuarios(nombre_usuario)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_usuarios_email ON usuarios(email)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_suscripciones_user_active ON suscripciones(user_id, activo)")
             
             connection.commit()
-            print("✅ Tablas creadas exitosamente (incluyendo usuarios)")
+            print("✅ Tablas creadas exitosamente (incluyendo usuarios, planes, suscripciones y pagos)")
             return True
             
         except Exception as e:
@@ -220,7 +225,6 @@ class Database:
         
         cursor = connection.cursor(cursor_factory=RealDictCursor)
         
-        # Hashear la contraseña
         contrasena_hash = generate_password_hash(contrasena)
         
         query = """
@@ -237,7 +241,6 @@ class Database:
                 connection.rollback()
                 return None
             usuario = dict(usuario_row)
-            # Asegurar que el rol esté presente
             if 'rol' not in usuario:
                 usuario['rol'] = 'usuario'
             connection.commit()
@@ -343,7 +346,302 @@ class Database:
         finally:
             cursor.close()
             connection.close()
+
+    # ==================== OPERACIONES DE PLANES ====================
+
+    def obtener_planes(self) -> List[Dict]:
+        """Obtiene todos los planes disponibles"""
+        connection = self.get_connection()
+        if not connection:
+            return []
+        
+        cursor = connection.cursor(cursor_factory=RealDictCursor)
+        
+        try:
+            cursor.execute("""
+                SELECT id, nombre, precio, limite_fuentes, descripcion, activo
+                FROM planes 
+                WHERE activo = TRUE
+                ORDER BY precio ASC
+            """)
+            planes = [dict(row) for row in cursor.fetchall()]
+            return planes
+        except Exception as e:
+            print(f"❌ Error obteniendo planes: {e}")
+            return []
+        finally:
+            cursor.close()
+            connection.close()
+
+    def obtener_plan(self, plan_id: int) -> Optional[Dict]:
+        """Obtiene un plan por ID"""
+        connection = self.get_connection()
+        if not connection:
+            return None
+        
+        cursor = connection.cursor(cursor_factory=RealDictCursor)
+        
+        try:
+            cursor.execute("SELECT * FROM planes WHERE id = %s", (plan_id,))
+            plan = cursor.fetchone()
+            return dict(plan) if plan else None
+        except Exception as e:
+            print(f"❌ Error obteniendo plan: {e}")
+            return None
+        finally:
+            cursor.close()
+            connection.close()
+
+    # ==================== OPERACIONES DE SUSCRIPCIONES ====================
+
+    def obtener_suscripcion_activa(self, user_id: int) -> Optional[Dict]:
+        """Obtiene la suscripción activa de un usuario"""
+        connection = self.get_connection()
+        if not connection:
+            return None
     
+        cursor = connection.cursor(cursor_factory=RealDictCursor)
+    
+        try:
+            cursor.execute("""
+                SELECT s.*, p.nombre as plan_nombre, p.precio, p.limite_fuentes, p.limite_scraping_diario, p.descripcion
+                FROM suscripciones s
+                JOIN planes p ON s.plan_id = p.id
+                WHERE s.user_id = %s AND s.activo = TRUE AND s.cancelado = FALSE
+                ORDER BY s.fecha_inicio DESC
+                LIMIT 1
+            """, (user_id,))
+            
+            suscripcion = cursor.fetchone()
+            return dict(suscripcion) if suscripcion else None
+        except Exception as e:
+            print(f"❌ Error obteniendo suscripción: {e}")
+            return None
+        finally:
+            cursor.close()
+            connection.close()
+
+    def crear_suscripcion(self, user_id: int, plan_id: int, meses: int = 1) -> Optional[Dict]:
+        """Crea o actualiza la suscripción de un usuario"""
+        connection = self.get_connection()
+        if not connection:
+            return None
+        
+        cursor = connection.cursor(cursor_factory=RealDictCursor)
+        
+        try:
+            # Desactivar suscripción anterior si existe
+            cursor.execute("""
+                UPDATE suscripciones 
+                SET activo = FALSE, cancelado = TRUE
+                WHERE user_id = %s AND activo = TRUE
+            """, (user_id,))
+            
+            # Crear nueva suscripción
+            cursor.execute("""
+                INSERT INTO suscripciones (user_id, plan_id, fecha_vencimiento, activo)
+                VALUES (%s, %s, CURRENT_TIMESTAMP + INTERVAL '%s months', TRUE)
+                RETURNING *
+            """, (user_id, plan_id, meses))
+            
+            nueva_suscripcion = dict(cursor.fetchone())
+            connection.commit()
+            print(f"✅ Suscripción creada para usuario {user_id} al plan {plan_id}")
+            return nueva_suscripcion
+        except Exception as e:
+            print(f"❌ Error creando suscripción: {e}")
+            connection.rollback()
+            return None
+        finally:
+            cursor.close()
+            connection.close()
+
+    def verificar_limite_fuentes(self, user_id: int) -> Dict:
+        """Verifica si el usuario puede agregar más fuentes según su plan"""
+        connection = self.get_connection()
+        if not connection:
+            return {'puede_agregar': False, 'mensaje': 'Error de conexión'}
+        
+        cursor = connection.cursor(cursor_factory=RealDictCursor)
+        
+        try:
+            # Obtener suscripción activa
+            suscripcion = self.obtener_suscripcion_activa(user_id)
+            
+            if not suscripcion:
+                return {
+                    'puede_agregar': False,
+                    'mensaje': 'No tienes una suscripción activa'
+                }
+            
+            limite = suscripcion['limite_fuentes']
+            
+            # Si limite es -1, es ilimitado
+            if limite == -1:
+                return {
+                    'puede_agregar': True,
+                    'limite': -1,
+                    'actuales': 0,
+                    'plan': suscripcion['plan_nombre']
+                }
+            
+            # Contar fuentes actuales del usuario
+            cursor.execute("SELECT COUNT(*) as total FROM fuentes WHERE user_id = %s", (user_id,))
+            fuentes_actuales = cursor.fetchone()['total']
+            
+            puede_agregar = fuentes_actuales < limite
+            
+            return {
+                'puede_agregar': puede_agregar,
+                'limite': limite,
+                'actuales': fuentes_actuales,
+                'plan': suscripcion['plan_nombre'],
+                'mensaje': f'Tienes {fuentes_actuales} de {limite} fuentes. ' + 
+                            ('Puedes agregar más.' if puede_agregar else 'Has alcanzado el límite de tu plan.')
+            }
+        except Exception as e:
+            print(f"❌ Error verificando límite: {e}")
+            return {'puede_agregar': False, 'mensaje': 'Error verificando límite'}
+        finally:
+            cursor.close()
+            connection.close()
+
+    # ==================== OPERACIONES DE PAGOS ====================
+
+    def crear_pago(self, user_id: int, plan_id: int, metodo_pago: str, monto: float, 
+                   referencia_pago: Optional[str] = None, datos_pago: Optional[Dict] = None) -> Optional[Dict]:
+        """Registra un nuevo pago"""
+        connection = self.get_connection()
+        if not connection:
+            return None
+        
+        cursor = connection.cursor(cursor_factory=RealDictCursor)
+        
+        try:
+            cursor.execute("""
+                INSERT INTO pagos (user_id, plan_id, metodo_pago, monto, referencia_pago, datos_pago, estado)
+                VALUES (%s, %s, %s, %s, %s, %s, 'pendiente')
+                RETURNING *
+            """, (user_id, plan_id, metodo_pago, monto, referencia_pago, 
+                  json.dumps(datos_pago) if datos_pago else None))
+            
+            pago = dict(cursor.fetchone())
+            connection.commit()
+            print(f"✅ Pago registrado: ID {pago['id']}")
+            return pago
+        except Exception as e:
+            print(f"❌ Error creando pago: {e}")
+            connection.rollback()
+            return None
+        finally:
+            cursor.close()
+            connection.close()
+
+    def actualizar_estado_pago(self, pago_id: int, estado: str, verificado_por: Optional[int] = None) -> bool:
+        """Actualiza el estado de un pago"""
+        connection = self.get_connection()
+        if not connection:
+            return False
+        
+        cursor = connection.cursor()
+        
+        try:
+            cursor.execute("""
+                UPDATE pagos 
+                SET estado = %s, 
+                    fecha_verificacion = CURRENT_TIMESTAMP,
+                    verificado_por = %s
+                WHERE id = %s
+            """, (estado, verificado_por, pago_id))
+            
+            connection.commit()
+            print(f"✅ Pago {pago_id} actualizado a estado: {estado}")
+            return True
+        except Exception as e:
+            print(f"❌ Error actualizando pago: {e}")
+            connection.rollback()
+            return False
+        finally:
+            cursor.close()
+            connection.close()
+
+    def obtener_pago(self, pago_id: int) -> Optional[Dict]:
+        """Obtiene un pago por ID"""
+        connection = self.get_connection()
+        if not connection:
+            return None
+        
+        cursor = connection.cursor(cursor_factory=RealDictCursor)
+        
+        try:
+            cursor.execute("""
+                SELECT p.*, pl.nombre as plan_nombre, u.nombre_usuario
+                FROM pagos p
+                JOIN planes pl ON p.plan_id = pl.id
+                JOIN usuarios u ON p.user_id = u.id
+                WHERE p.id = %s
+            """, (pago_id,))
+            
+            pago = cursor.fetchone()
+            return dict(pago) if pago else None
+        except Exception as e:
+            print(f"❌ Error obteniendo pago: {e}")
+            return None
+        finally:
+            cursor.close()
+            connection.close()
+
+    def obtener_pagos_usuario(self, user_id: int) -> List[Dict]:
+        """Obtiene todos los pagos de un usuario"""
+        connection = self.get_connection()
+        if not connection:
+            return []
+        
+        cursor = connection.cursor(cursor_factory=RealDictCursor)
+        
+        try:
+            cursor.execute("""
+                SELECT p.*, pl.nombre as plan_nombre
+                FROM pagos p
+                JOIN planes pl ON p.plan_id = pl.id
+                WHERE p.user_id = %s
+                ORDER BY p.fecha_pago DESC
+            """, (user_id,))
+            
+            pagos = [dict(row) for row in cursor.fetchall()]
+            return pagos
+        except Exception as e:
+            print(f"❌ Error obteniendo pagos: {e}")
+            return []
+        finally:
+            cursor.close()
+            connection.close()
+
+    def obtener_pago_por_referencia(self, referencia_pago: str) -> Optional[Dict]:
+        """Obtiene un pago por su referencia externa (PayPal, Stripe, etc.)"""
+        connection = self.get_connection()
+        if not connection:
+            return None
+        
+        cursor = connection.cursor(cursor_factory=RealDictCursor)
+        
+        try:
+            cursor.execute("""
+                SELECT p.*, pl.nombre as plan_nombre
+                FROM pagos p
+                JOIN planes pl ON p.plan_id = pl.id
+                WHERE p.referencia_pago = %s
+            """, (referencia_pago,))
+            
+            pago = cursor.fetchone()
+            return dict(pago) if pago else None
+        except Exception as e:
+            print(f"❌ Error obteniendo pago por referencia: {e}")
+            return None
+        finally:
+            cursor.close()
+            connection.close()
+
     # ==================== OPERACIONES DE FUENTES ====================
     
     def agregar_fuente(self, fuente: Dict, user_id: int) -> Optional[Dict]:
@@ -395,20 +693,16 @@ class Database:
         
         cursor = connection.cursor(cursor_factory=RealDictCursor)
         
-        # Construir query con filtros
         where_clauses = []
         params = []
         
-        # Filtrar por usuario (admin ve todas)
         if not es_admin and user_id is not None:
             where_clauses.append("user_id = %s")
             params.append(int(user_id))
         
-        # Filtrar por activas
         if solo_activas:
             where_clauses.append("activo = TRUE")
         
-        # Construir query final
         where_clause = " WHERE " + " AND ".join(where_clauses) if where_clauses else ""
         query = f"SELECT * FROM fuentes{where_clause} ORDER BY id"
         
@@ -434,14 +728,11 @@ class Database:
         cursor = connection.cursor(cursor_factory=RealDictCursor)
         
         try:
-            # Si es admin, puede ver cualquier fuente
             if es_admin:
                 cursor.execute("SELECT * FROM fuentes WHERE id = %s", (fuente_id,))
             elif user_id is not None:
-                # Usuario normal solo puede ver sus propias fuentes
                 cursor.execute("SELECT * FROM fuentes WHERE id = %s AND user_id = %s", (fuente_id, int(user_id)))
             else:
-                # Sin user_id, no puede ver nada
                 return None
             
             fuente = cursor.fetchone()
@@ -463,7 +754,6 @@ class Database:
         
         cursor = connection.cursor()
         
-        # Verificar que la fuente pertenezca al usuario (si no es admin)
         if not es_admin and user_id is not None:
             cursor.execute("SELECT user_id FROM fuentes WHERE id = %s", (fuente_id,))
             resultado = cursor.fetchone()
@@ -532,7 +822,6 @@ class Database:
         cursor = connection.cursor()
         
         try:
-            # Verificar que la fuente pertenezca al usuario (si no es admin)
             if not es_admin and user_id is not None:
                 cursor.execute("SELECT user_id FROM fuentes WHERE id = %s", (fuente_id,))
                 resultado = cursor.fetchone()
@@ -616,24 +905,21 @@ class Database:
         
         cursor = connection.cursor(cursor_factory=RealDictCursor)
         
-        # Construir query base para contar y obtener
         where_clause = "WHERE 1=1"
         parametros = []
         
-        # Filtrar por usuario (admin ve todas)
         if not es_admin and user_id is not None:
             where_clause += " AND n.user_id = %s"
             parametros.append(int(user_id))
         
         if fuente_id is not None:
             where_clause += " AND n.fuente_id = %s"
-            parametros.append(int(fuente_id))  # Asegurar que sea int
+            parametros.append(int(fuente_id))
         
         if categoria:
             where_clause += " AND n.categoria = %s"
             parametros.append(categoria)
         
-        # Primero contar el total
         count_query = f"""
             SELECT COUNT(*) as total
             FROM noticias n
@@ -642,11 +928,9 @@ class Database:
         """
         
         try:
-            # Ejecutar count query
             cursor.execute(count_query, parametros)
             total = cursor.fetchone()['total']
             
-            # Luego obtener las noticias
             query = f"""
                 SELECT n.*, f.nombre as fuente_nombre
                 FROM noticias n
@@ -654,7 +938,7 @@ class Database:
                 {where_clause}
                 ORDER BY n.fecha_scraping DESC LIMIT %s OFFSET %s
             """
-            query_params = parametros.copy()  # Copiar parámetros para no modificar la lista original
+            query_params = parametros.copy()
             query_params.extend([limite, offset])
             
             cursor.execute(query, query_params)
@@ -687,7 +971,6 @@ class Database:
             query = "SELECT COUNT(*) FROM noticias"
             params = []
             
-            # Filtrar por usuario si no es admin
             if not es_admin and user_id is not None:
                 query += " WHERE user_id = %s"
                 params.append(int(user_id))
@@ -746,7 +1029,6 @@ class Database:
             """
             params = []
             
-            # Filtrar por usuario si no es admin
             if not es_admin and user_id is not None:
                 query += " AND user_id = %s"
                 params.append(int(user_id))
@@ -760,6 +1042,151 @@ class Database:
         except Exception as e:
             print(f"❌ Error obteniendo categorías: {e}")
             return []
+        finally:
+            cursor.close()
+            connection.close()
+
+    
+
+
+
+
+
+
+
+
+
+
+    # ==================== OPERACIONES DE SCRAPING DIARIO ====================
+
+    def obtener_scraping_hoy(self, user_id: int) -> Dict:
+        """Obtiene el registro de scraping del usuario para hoy"""
+        connection = self.get_connection()
+        if not connection:
+            return {'cantidad': 0, 'fecha': None}
+        
+        cursor = connection.cursor(cursor_factory=RealDictCursor)
+        
+        try:
+            cursor.execute("""
+                SELECT * FROM scraping_diario 
+                WHERE user_id = %s AND fecha = CURRENT_DATE
+            """, (user_id,))
+            
+            registro = cursor.fetchone()
+            return dict(registro) if registro else {'cantidad': 0, 'fecha': None}
+        except Exception as e:
+            print(f"❌ Error obteniendo scraping hoy: {e}")
+            return {'cantidad': 0, 'fecha': None}
+        finally:
+            cursor.close()
+            connection.close()
+
+    def incrementar_scraping_diario(self, user_id: int, cantidad: int = 1) -> bool:
+        """Incrementa el contador de scraping diario"""
+        connection = self.get_connection()
+        if not connection:
+            return False
+        
+        cursor = connection.cursor()
+        
+        try:
+            # Obtener suscripción activa
+            suscripcion = self.obtener_suscripcion_activa(user_id)
+            plan_id = suscripcion['plan_id'] if suscripcion else None
+            
+            # Insertar o actualizar registro de hoy
+            cursor.execute("""
+                INSERT INTO scraping_diario (user_id, fecha, cantidad, plan_id)
+                VALUES (%s, CURRENT_DATE, %s, %s)
+                ON CONFLICT (user_id, fecha) 
+                DO UPDATE SET 
+                    cantidad = scraping_diario.cantidad + EXCLUDED.cantidad,
+                    fecha_actualizacion = CURRENT_TIMESTAMP
+            """, (user_id, cantidad, plan_id))
+            
+            connection.commit()
+            return True
+        except Exception as e:
+            print(f"❌ Error incrementando scraping: {e}")
+            connection.rollback()
+            return False
+        finally:
+            cursor.close()
+            connection.close()
+
+    def verificar_limite_scraping(self, user_id: int, cantidad_a_scrapear: int = 1) -> Dict:
+        """Verifica si el usuario puede hacer scraping según su plan"""
+        connection = self.get_connection()
+        if not connection:
+            return {'puede_scrapear': False, 'mensaje': 'Error de conexión'}
+        
+        try:
+            # Obtener suscripción activa
+            suscripcion = self.obtener_suscripcion_activa(user_id)
+            
+            if not suscripcion:
+                return {
+                    'puede_scrapear': False,
+                    'mensaje': 'No tienes una suscripción activa'
+                }
+            
+            limite = suscripcion['limite_scraping_diario']
+            
+            # Si limite es -1, es ilimitado
+            if limite == -1:
+                return {
+                    'puede_scrapear': True,
+                    'limite': -1,
+                    'usado_hoy': 0,
+                    'disponible': -1,
+                    'plan': suscripcion['plan_nombre']
+                }
+            
+            # Obtener scraping de hoy
+            scraping_hoy = self.obtener_scraping_hoy(user_id)
+            usado_hoy = scraping_hoy.get('cantidad', 0)
+            disponible = limite - usado_hoy
+            
+            puede_scrapear = (usado_hoy + cantidad_a_scrapear) <= limite
+            
+            return {
+                'puede_scrapear': puede_scrapear,
+                'limite': limite,
+                'usado_hoy': usado_hoy,
+                'disponible': disponible,
+                'plan': suscripcion['plan_nombre'],
+                'mensaje': f'Has usado {usado_hoy} de {limite} noticias hoy. ' + 
+                          (f'Disponibles: {disponible}' if puede_scrapear else '¡Límite alcanzado!')
+            }
+        except Exception as e:
+            print(f"❌ Error verificando límite scraping: {e}")
+            return {'puede_scrapear': False, 'mensaje': 'Error verificando límite'}
+        finally:
+            connection.close()
+
+    def resetear_scraping_antiguo(self) -> bool:
+        """Elimina registros de scraping antiguos (más de 30 días)"""
+        connection = self.get_connection()
+        if not connection:
+            return False
+        
+        cursor = connection.cursor()
+        
+        try:
+            cursor.execute("""
+                DELETE FROM scraping_diario 
+                WHERE fecha < CURRENT_DATE - INTERVAL '30 days'
+            """)
+            connection.commit()
+            eliminados = cursor.rowcount
+            if eliminados > 0:
+                print(f"🧹 Limpiados {eliminados} registros antiguos de scraping")
+            return True
+        except Exception as e:
+            print(f"❌ Error limpiando scraping antiguo: {e}")
+            connection.rollback()
+            return False
         finally:
             cursor.close()
             connection.close()

@@ -11,6 +11,7 @@ import Fuentes from './pages/Fuentes';
 import Estadisticas from './pages/Estadisticas';
 import Busqueda from './pages/Busqueda';
 import Scheduler from './pages/Scheduler';
+import Planes from './pages/Planes'; // <--- AGREGADO
 
 function App() {
   return (
@@ -35,6 +36,7 @@ function App() {
             <Route path="estadisticas" element={<Estadisticas />} />
             <Route path="busqueda" element={<Busqueda />} />
             <Route path="scheduler" element={<Scheduler />} />
+            <Route path="planes" element={<Planes />} /> {/* <--- AGREGADO */}
           </Route>
 
           <Route path="*" element={<Navigate to="/" replace />} />

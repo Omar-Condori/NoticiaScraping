@@ -1,19 +1,21 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom'; // <--- AGREGADO
+import { useApp } from '../context/AppContext'; // <--- AGREGADO
 import { fuentesAPI } from '../services/api';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import Modal from '../components/ui/Modal';
 import Badge from '../components/ui/Badge';
-import { Plus, Edit, Trash2, Globe, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
+import { Plus, Edit, Trash2, Globe, CheckCircle, XCircle, AlertCircle, Crown } from 'lucide-react'; // <--- Crown agregado
 
 export default function Fuentes() {
+  const { limiteFuentes, loadingPlan } = useApp(); // <--- AGREGADO
   const [fuentes, setFuentes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modalAbierto, setModalAbierto] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  // ← MODIFICADO: Formulario simplificado (solo nombre y url)
   const [formData, setFormData] = useState({
     nombre: '',
     url: '',
@@ -28,7 +30,6 @@ export default function Fuentes() {
     setError('');
     try {
       const data = await fuentesAPI.listar();
-      // Si hay error de conexión, mostrar mensaje amigable
       if (data && data.success === false && data.error && data.error.includes('No se pudo conectar')) {
         setError(data.error);
         setFuentes([]);
@@ -54,13 +55,17 @@ export default function Fuentes() {
     setError('');
     setSuccess('');
 
-    // ← MODIFICADO: Validación simplificada
+    // <--- AGREGADO: Verificar límite antes de crear
+    if (limiteFuentes && !limiteFuentes.puede_agregar) {
+      setError('Has alcanzado el límite de fuentes de tu plan. Actualiza tu plan para agregar más fuentes.');
+      return;
+    }
+
     if (!formData.nombre || !formData.url) {
       setError('Nombre y URL son requeridos');
       return;
     }
 
-    // Validación básica de URL
     try {
       new URL(formData.url);
     } catch {
@@ -69,7 +74,6 @@ export default function Fuentes() {
     }
 
     try {
-      // ← MODIFICADO: Llamada simplificada al API
       const data = await fuentesAPI.crear(formData.nombre, formData.url);
 
       if (data.success) {
@@ -78,7 +82,6 @@ export default function Fuentes() {
         setFormData({ nombre: '', url: '' });
         cargarFuentes();
         
-        // Mostrar mensaje informativo
         setTimeout(() => {
           alert(
             'La fuente se creó con selectores HTML estándar.\n\n' +
@@ -116,18 +119,60 @@ export default function Fuentes() {
     });
   };
 
+  // <--- AGREGADO: Verificar si llegó al límite
+  const puedeAgregarFuente = !limiteFuentes || limiteFuentes.puede_agregar;
+  const enLimite = limiteFuentes && !limiteFuentes.puede_agregar;
+
   return (
     <div className="space-y-6">
+      {/* <--- AGREGADO: Banner de advertencia de límite */}
+      {enLimite && (
+        <div className="bg-yellow-500/10 border-2 border-yellow-500/50 rounded-xl p-6">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 bg-yellow-500/20 rounded-full flex items-center justify-center flex-shrink-0">
+              <AlertCircle className="w-6 h-6 text-yellow-400" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-yellow-400 font-semibold text-lg mb-2">
+                Has alcanzado el límite de fuentes
+              </h3>
+              <p className="text-gray-300 mb-4">
+                Tienes {limiteFuentes.actuales} fuentes activas y tu plan permite {limiteFuentes.limite === -1 ? 'ilimitadas' : limiteFuentes.limite} fuentes.
+                Para agregar más fuentes, actualiza tu plan.
+              </p>
+              <Link to="/planes">
+                <Button className="gap-2 bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600">
+                  <Crown className="w-4 h-4" />
+                  Ver Planes Premium
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold text-white">Fuentes de Noticias</h1>
           <p className="text-gray-400 mt-1">
             Gestiona las fuentes de scraping
+            {/* <--- AGREGADO: Mostrar contador */}
+            {limiteFuentes && (
+              <span className="ml-2">
+                ({limiteFuentes.actuales} de {limiteFuentes.limite === -1 ? '∞' : limiteFuentes.limite} fuentes)
+              </span>
+            )}
           </p>
         </div>
 
-        <Button onClick={() => setModalAbierto(true)} className="gap-2">
+        {/* <--- MODIFICADO: Botón deshabilitado si llegó al límite */}
+        <Button 
+          onClick={() => setModalAbierto(true)} 
+          className="gap-2"
+          disabled={!puedeAgregarFuente || loadingPlan}
+          title={!puedeAgregarFuente ? 'Límite de fuentes alcanzado. Actualiza tu plan.' : ''}
+        >
           <Plus className="w-4 h-4" />
           Nueva Fuente
         </Button>
@@ -203,7 +248,6 @@ export default function Fuentes() {
                   size="sm"
                   className="flex-1 gap-2"
                   onClick={() => {
-                    // Aquí puedes implementar la edición completa
                     alert('Funcionalidad de edición completa próximamente');
                   }}
                 >
@@ -223,7 +267,7 @@ export default function Fuentes() {
         </div>
       )}
 
-      {/* ← MODIFICADO: Modal simplificado */}
+      {/* Modal */}
       <Modal
         isOpen={modalAbierto}
         onClose={() => {
@@ -234,7 +278,6 @@ export default function Fuentes() {
         title="Nueva Fuente de Noticias"
       >
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* ← NUEVO: Mensaje informativo */}
           <div className="bg-blue-500/10 border border-blue-500/50 rounded-lg p-4">
             <p className="text-sm text-blue-400">
               ℹ️ Solo necesitas el nombre y la URL. Los selectores CSS se asignarán automáticamente.

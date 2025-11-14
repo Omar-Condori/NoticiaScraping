@@ -1,24 +1,26 @@
 from flask import Flask, jsonify, request, Response
 from flask_swagger_ui import get_swaggerui_blueprint
 from flask_cors import CORS
-from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity  # <--- ¡NUEVO!
+from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
 from scraper import NewsScraper
 from scheduler import ScraperScheduler
 from estadisticas import Estadisticas
 from busqueda import BusquedaAvanzada
 from exportar import Exportador
-from auth import AuthManager  # <--- ¡NUEVO!
+from auth import AuthManager
+from payments import PaymentFactory, PaymentConfig
+from middleware import admin_required, get_user_info, verificar_limite_fuentes, verificar_limite_scraping  # <--- MODIFICADO
 import json
-from datetime import timedelta  # <--- ¡NUEVO!
+from datetime import timedelta
 
 
 # Inicializar Flask
 app = Flask(__name__)
-CORS(app)  # Habilitar CORS para 
+CORS(app)
 
-# <--- ¡NUEVA CONFIGURACIÓN! JWT
-app.config['JWT_SECRET_KEY'] = 'tu-super-secreto-cambiar-en-produccion-2025'  # ⚠️ CAMBIA ESTO EN PRODUCCIÓN
-app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=24)  # Token válido por 24 horas
+# Configuración JWT
+app.config['JWT_SECRET_KEY'] = 'tu-super-secreto-cambiar-en-produccion-2025'
+app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=24)
 jwt = JWTManager(app)
 
 # Inicializar scraper
@@ -29,7 +31,7 @@ scheduler = ScraperScheduler(scraper)
 estadisticas_module = Estadisticas()
 busqueda_module = BusquedaAvanzada()
 exportador = Exportador()
-auth_manager = AuthManager()  # <--- ¡NUEVO!
+auth_manager = AuthManager()
 
 # Configuración de Swagger
 SWAGGER_URL = '/docs'
@@ -60,19 +62,30 @@ def home():
     """Endpoint de bienvenida con información de la API"""
     return jsonify({
         'mensaje': '🚀 API de Scraping de Noticias con Autenticación JWT',
-        'version': '3.0.0',  # <--- ¡ACTUALIZADO!
+        'version': '3.0.0',
         'documentacion': f'http://localhost:8001{SWAGGER_URL}',
-        'nuevas_funcionalidades': '⭐ JWT Authentication, Scheduler, Búsqueda Avanzada, Estadísticas, Exportación, Imágenes, Categorías',
+        'nuevas_funcionalidades': '⭐ JWT Authentication, Scheduler, Búsqueda Avanzada, Estadísticas, Exportación, Imágenes, Categorías, Planes y Pagos',
         'endpoints': {
             'documentacion': '/docs',
-            'autenticacion': {  # <--- ¡NUEVO!
+            'autenticacion': {
                 'registro': 'POST /api/v1/auth/register',
                 'login': 'POST /api/v1/auth/login',
                 'perfil': 'GET /api/v1/auth/perfil (requiere JWT)'
             },
+            'planes': {
+                'listar': 'GET /api/v1/planes',
+                'mi_plan': 'GET /api/v1/suscripciones/mi-plan (requiere JWT)',
+                'cambiar_plan': 'POST /api/v1/suscripciones/cambiar (requiere JWT)'
+            },
+            'pagos': {
+                'crear': 'POST /api/v1/pagos/crear (requiere JWT)',
+                'mis_pagos': 'GET /api/v1/pagos/mis-pagos (requiere JWT)',
+                'verificar_yape': 'POST /api/v1/pagos/verificar-yape (requiere JWT)'
+            },
             'scraping': {
-                'scrapear_ahora': 'POST /api/v1/scraping/ejecutar (requiere JWT)',  # <--- ¡MODIFICADO!
-                'scrapear_fuente': 'POST /api/v1/scraping/ejecutar?fuente_id=1 (requiere JWT)'
+                'scrapear_ahora': 'POST /api/v1/scraping/ejecutar (requiere JWT)',
+                'scrapear_fuente': 'POST /api/v1/scraping/ejecutar?fuente_id=1 (requiere JWT)',
+                'estadisticas': 'GET /api/v1/scraping/estadisticas (requiere JWT)'
             },
             'scheduler': {
                 'listar_tareas': 'GET /api/v1/scheduler/tareas',
@@ -133,10 +146,8 @@ def registrar_usuario():
     try:
         datos = request.get_json()
         
-        # Debug: imprimir datos recibidos
         print(f"📥 Datos recibidos en registro: {datos}")
         
-        # Validar campos requeridos
         if not datos:
             return jsonify({
                 'error': 'No se recibieron datos',
@@ -150,7 +161,6 @@ def registrar_usuario():
                 'datos_recibidos': list(datos.keys()) if datos else []
             }), 400
         
-        # Intentar registrar usuario
         resultado = auth_manager.registrar_usuario(
             nombre_usuario=datos['nombre_usuario'],
             email=datos['email'],
@@ -164,12 +174,10 @@ def registrar_usuario():
                 'error': resultado['error']
             }), 400
         
-        # Asegurar que el rol esté presente en el usuario
         usuario_respuesta = resultado['usuario'].copy()
         if 'rol' not in usuario_respuesta:
             usuario_respuesta['rol'] = 'usuario'
         
-        # Generar token JWT automáticamente después del registro (con rol)
         access_token = create_access_token(
             identity=usuario_respuesta['id'],
             additional_claims={'rol': usuario_respuesta.get('rol', 'usuario')}
@@ -205,10 +213,8 @@ def login_usuario():
     try:
         datos = request.get_json()
         
-        # Debug: imprimir datos recibidos
         print(f"📥 Datos recibidos en login: {datos}")
         
-        # Validar campos requeridos
         if not datos:
             return jsonify({
                 'error': 'No se recibieron datos',
@@ -222,7 +228,6 @@ def login_usuario():
                 'datos_recibidos': list(datos.keys()) if datos else []
             }), 400
         
-        # Intentar autenticar usuario
         resultado = auth_manager.autenticar_usuario(
             nombre_usuario=datos['nombre_usuario'],
             contrasena=datos['contrasena']
@@ -235,12 +240,10 @@ def login_usuario():
                 'error': resultado['error']
             }), 401
         
-        # Asegurar que el rol esté presente en el usuario
         usuario_respuesta = resultado['usuario'].copy()
         if 'rol' not in usuario_respuesta:
             usuario_respuesta['rol'] = 'usuario'
         
-        # Generar token JWT con información adicional (rol)
         access_token = create_access_token(
             identity=usuario_respuesta['id'],
             additional_claims={'rol': usuario_respuesta.get('rol', 'usuario')}
@@ -263,7 +266,7 @@ def login_usuario():
         }), 500
 
 @app.route('/api/v1/auth/perfil', methods=['GET'])
-@jwt_required()  # <--- ¡PROTEGIDO! Requiere JWT válido
+@jwt_required()
 def obtener_perfil():
     """
     Obtiene el perfil del usuario autenticado
@@ -271,15 +274,12 @@ def obtener_perfil():
     Requiere: Authorization: Bearer <token>
     """
     try:
-        # Obtener ID del usuario desde el token JWT
         usuario_id = get_jwt_identity()
         
-        # Obtener rol del token JWT
         from flask_jwt_extended import get_jwt
         claims = get_jwt()
         rol = claims.get('rol', 'usuario')
         
-        # Buscar usuario en la base de datos
         usuario = auth_manager.obtener_usuario_por_id(usuario_id)
         
         if not usuario:
@@ -287,7 +287,6 @@ def obtener_perfil():
                 'error': 'Usuario no encontrado'
             }), 404
         
-        # Asegurar que el rol esté en el objeto usuario
         usuario['rol'] = rol
         
         return jsonify({
@@ -306,7 +305,7 @@ def obtener_perfil():
 # ==================== ENDPOINTS DE SCRAPING ====================
 
 @app.route('/api/v1/scraping/ejecutar', methods=['POST'])
-@jwt_required()  # <--- ¡PROTEGIDO! Requiere JWT válido
+@verificar_limite_scraping  # <--- MODIFICADO: Cambié de @jwt_required() a @verificar_limite_scraping
 def ejecutar_scraping():
     """
     🔥 ENDPOINT PRINCIPAL: Ejecuta el scraping de noticias
@@ -320,7 +319,6 @@ def ejecutar_scraping():
         - fuente_id: ID de fuente específica (opcional)
         - guardar: si debe guardar en BD (default: true)
     """
-    # Obtener ID del usuario autenticado
     usuario_id = get_jwt_identity()
     print(f"🔐 Scraping ejecutado por usuario ID: {usuario_id}")
     
@@ -329,14 +327,12 @@ def ejecutar_scraping():
     guardar = request.args.get('guardar', default='true', type=str).lower() == 'true'
     
     try:
-        # Obtener rol del token JWT
         from flask_jwt_extended import get_jwt
         claims = get_jwt()
         rol = claims.get('rol', 'usuario')
         es_admin = (rol == 'admin')
         
         if fuente_id:
-            # Scrapear una fuente específica (verificar que pertenezca al usuario)
             fuente = scraper.obtener_fuente(fuente_id, user_id=usuario_id, es_admin=es_admin)
             if not fuente:
                 return jsonify({
@@ -347,16 +343,21 @@ def ejecutar_scraping():
             noticias = scraper.scrape_fuente(fuente, limite, guardar, usuario_id)
             mensaje = f'Scraping completado de {fuente["nombre"]}'
         else:
-            # Scrapear todas las fuentes activas del usuario
             noticias = scraper.scrape_todas_fuentes(limite, guardar, solo_activas=True, user_id=usuario_id)
             mensaje = 'Scraping completado de todas las fuentes'
+        
+        # <--- AGREGADO: Incrementar contador de scraping diario
+        cantidad_scrapeada = len(noticias)
+        if cantidad_scrapeada > 0:
+            scraper.db.incrementar_scraping_diario(usuario_id, cantidad_scrapeada)
+            print(f"📊 Contador actualizado: +{cantidad_scrapeada} noticias para usuario {usuario_id}")
         
         return jsonify({
             'success': True,
             'mensaje': mensaje,
             'total_noticias': len(noticias),
             'guardadas_en_bd': guardar,
-            'usuario_id': usuario_id,  # <--- ¡NUEVO! Identificar quién ejecutó el scraping
+            'usuario_id': usuario_id,
             'noticias': noticias
         }), 200
         
@@ -369,10 +370,39 @@ def ejecutar_scraping():
             'detalle': str(e)
         }), 500
 
+# <--- AGREGADO: Nuevo endpoint de estadísticas de scraping
+@app.route('/api/v1/scraping/estadisticas', methods=['GET'])
+@jwt_required()
+def estadisticas_scraping():
+    """Obtiene estadísticas de scraping del usuario"""
+    try:
+        usuario_id = get_jwt_identity()
+        
+        # Obtener info del plan
+        suscripcion = scraper.db.obtener_suscripcion_activa(usuario_id)
+        limite_info = scraper.db.verificar_limite_scraping(usuario_id)
+        
+        return jsonify({
+            'success': True,
+            'plan': suscripcion['plan_nombre'] if suscripcion else 'Sin plan',
+            'limite_diario': limite_info.get('limite'),
+            'usado_hoy': limite_info.get('usado_hoy'),
+            'disponible': limite_info.get('disponible'),
+            'puede_scrapear': limite_info.get('puede_scrapear'),
+            'mensaje': limite_info.get('mensaje')
+        }), 200
+        
+    except Exception as e:
+        print(f"❌ Error obteniendo estadísticas: {e}")
+        return jsonify({
+            'error': 'Error obteniendo estadísticas',
+            'detalle': str(e)
+        }), 500
+
 # ==================== ENDPOINTS DE NOTICIAS ====================
 
 @app.route('/api/v1/noticias', methods=['GET'])
-@jwt_required(optional=True)  # JWT opcional para compatibilidad, pero recomendado
+@jwt_required(optional=True)
 def obtener_noticias():
     """
     Obtiene noticias guardadas en la base de datos con paginación
@@ -389,7 +419,6 @@ def obtener_noticias():
     fuente_id = request.args.get('fuente_id', type=int)
     categoria = request.args.get('categoria', type=str)
     
-    # Obtener usuario y rol del token (si existe)
     usuario_id = None
     es_admin = False
     try:
@@ -399,7 +428,7 @@ def obtener_noticias():
         rol = claims.get('rol', 'usuario')
         es_admin = (rol == 'admin')
     except:
-        pass  # No hay token, usuario_id queda None
+        pass
     
     try:
         noticias, total = scraper.obtener_noticias_guardadas(
@@ -413,10 +442,10 @@ def obtener_noticias():
         
         return jsonify({
             'success': True,
-            'total': total,  # Total real de noticias que coinciden con los filtros
+            'total': total,
             'limite': limite,
             'offset': offset,
-            'total_paginas': (total + limite - 1) // limite if limite > 0 else 0,  # Cálculo de páginas
+            'total_paginas': (total + limite - 1) // limite if limite > 0 else 0,
             'pagina_actual': (offset // limite) + 1 if limite > 0 else 1,
             'mensaje': 'Noticias obtenidas desde la base de datos',
             'noticias': noticias
@@ -484,7 +513,6 @@ def obtener_categorias():
     
     Retorna una lista de strings con las categorías disponibles
     """
-    # Obtener usuario y rol del token (si existe)
     usuario_id = None
     es_admin = False
     try:
@@ -494,7 +522,7 @@ def obtener_categorias():
         rol = claims.get('rol', 'usuario')
         es_admin = (rol == 'admin')
     except:
-        pass  # No hay token
+        pass
     
     try:
         categorias = scraper.obtener_categorias(user_id=usuario_id, es_admin=es_admin)
@@ -519,7 +547,6 @@ def listar_fuentes():
     """Lista fuentes configuradas (filtradas por usuario si no es admin)"""
     solo_activas = request.args.get('activas', default='false', type=str).lower() == 'true'
     
-    # Obtener usuario y rol del token (si existe)
     usuario_id = None
     es_admin = False
     try:
@@ -529,7 +556,7 @@ def listar_fuentes():
         rol = claims.get('rol', 'usuario')
         es_admin = (rol == 'admin')
     except:
-        pass  # No hay token
+        pass
     
     try:
         fuentes = scraper.obtener_fuentes(solo_activas=solo_activas, user_id=usuario_id, es_admin=es_admin)
@@ -554,7 +581,6 @@ def listar_fuentes():
 @jwt_required(optional=True)
 def obtener_fuente(id):
     """Obtiene una fuente específica por ID (verifica que pertenezca al usuario si no es admin)"""
-    # Obtener usuario y rol del token (si existe)
     usuario_id = None
     es_admin = False
     try:
@@ -564,7 +590,7 @@ def obtener_fuente(id):
         rol = claims.get('rol', 'usuario')
         es_admin = (rol == 'admin')
     except:
-        pass  # No hay token
+        pass
     
     try:
         fuente = scraper.obtener_fuente(id, user_id=usuario_id, es_admin=es_admin)
@@ -584,9 +610,8 @@ def obtener_fuente(id):
             'detalle': str(e)
         }), 500
 
-# <--- ¡MODIFICACIÓN COMPLETA! Solo requiere nombre y url
 @app.route('/api/v1/fuentes', methods=['POST'])
-@jwt_required()  # ✅ AGREGAR ESTA LÍNEA
+@verificar_limite_fuentes
 def agregar_fuente():
     """
     Agrega una nueva fuente (SIMPLIFICADO - Solo requiere nombre y url)
@@ -607,12 +632,10 @@ def agregar_fuente():
     - selector_categoria
     """
     try:
-        # Obtener ID del usuario autenticado
         usuario_id = get_jwt_identity()
         
         datos = request.get_json()
         
-        # <--- ¡MODIFICACIÓN! Solo validar nombre y url
         if 'nombre' not in datos or 'url' not in datos:
             return jsonify({
                 'error': 'Faltan campos requeridos',
@@ -620,19 +643,15 @@ def agregar_fuente():
                 'recibidos': list(datos.keys())
             }), 400
         
-        # <--- ¡MEJORADO! Asignar valores por defecto más inteligentes a selectores opcionales
-        # Intentar detectar el tipo de sitio y usar selectores más comunes
         url_lower = datos['url'].lower()
         
-        # Selectores por defecto más comunes y flexibles
         selector_contenedor_default = {'name': 'article'}
         selector_titulo_default = {'name': 'h2'}
         selector_resumen_default = {'name': 'p'}
         selector_link_default = {'name': 'a'}
-        selector_imagen_default = {'name': 'img'}  # El scraper buscará imágenes automáticamente
-        selector_categoria_default = None  # Muchos sitios no tienen categoría visible
+        selector_imagen_default = {'name': 'img'}
+        selector_categoria_default = None
         
-        # Si no se proporcionan selectores, usar los por defecto
         fuente_completa = {
             'nombre': datos['nombre'],
             'url': datos['url'],
@@ -645,7 +664,6 @@ def agregar_fuente():
             'activo': datos.get('activo', True)
         }
         
-        # Agregar fuente a la base de datos (asociada al usuario)
         fuente = scraper.agregar_fuente(fuente_completa, usuario_id)
         
         if fuente:
@@ -681,10 +699,8 @@ def actualizar_fuente(id):
     }
     """
     try:
-        # Obtener ID del usuario autenticado
         usuario_id = get_jwt_identity()
         
-        # Obtener rol del token JWT
         from flask_jwt_extended import get_jwt
         claims = get_jwt()
         rol = claims.get('rol', 'usuario')
@@ -716,10 +732,8 @@ def actualizar_fuente(id):
 def eliminar_fuente(id):
     """Elimina una fuente (verifica que pertenezca al usuario si no es admin)"""
     try:
-        # Obtener ID del usuario autenticado
         usuario_id = get_jwt_identity()
         
-        # Obtener rol del token JWT
         from flask_jwt_extended import get_jwt
         claims = get_jwt()
         rol = claims.get('rol', 'usuario')
@@ -888,7 +902,7 @@ def reanudar_tarea_programada(nombre):
 
 # ==================== ENDPOINTS DE ESTADÍSTICAS ====================
 
-@app.route('/api/v1/estadisticas', methods=['GET'])
+@app.route('/api/v1/scraping/estadisticas', methods=['GET'])
 def obtener_estadisticas():
     """Obtiene estadísticas generales del sistema"""
     try:
@@ -1040,7 +1054,7 @@ def buscar_por_palabras_clave():
 # ==================== ENDPOINTS DE EXPORTACIÓN ====================
 
 @app.route('/api/v1/noticias/exportar', methods=['GET'])
-@jwt_required(optional=True)  # JWT opcional pero recomendado
+@jwt_required(optional=True)
 def exportar_noticias():
     """
     Exporta noticias en diferentes formatos
@@ -1059,7 +1073,6 @@ def exportar_noticias():
             'error': 'Formato no válido. Opciones: csv, json, txt'
         }), 400
     
-    # Obtener usuario y rol del token (si existe)
     usuario_id = None
     es_admin = False
     try:
@@ -1069,10 +1082,9 @@ def exportar_noticias():
         rol = claims.get('rol', 'usuario')
         es_admin = (rol == 'admin')
     except:
-        pass  # No hay token
+        pass
     
     try:
-        # Obtener noticias (retorna tupla: (noticias, total))
         noticias, total = scraper.obtener_noticias_guardadas(
             limite=limite,
             offset=0,
@@ -1086,7 +1098,6 @@ def exportar_noticias():
                 'error': 'No hay noticias para exportar'
             }), 404
         
-        # Exportar según formato
         if formato == 'csv':
             contenido = exportador.exportar_csv(noticias)
             mimetype = 'text/csv'
@@ -1095,12 +1106,11 @@ def exportar_noticias():
             contenido = exportador.exportar_json(noticias)
             mimetype = 'application/json'
             extension = 'json'
-        else:  # txt
+        else:
             contenido = exportador.exportar_txt(noticias)
             mimetype = 'text/plain'
             extension = 'txt'
         
-        # Crear respuesta con archivo descargable
         return Response(
             contenido,
             mimetype=mimetype,
@@ -1117,10 +1127,445 @@ def exportar_noticias():
             'error': 'Error exportando noticias',
             'detalle': str(e)
         }), 500
+
+# ==================== ENDPOINTS DE PLANES ====================
+
+@app.route('/api/v1/planes', methods=['GET'])
+def obtener_planes():
+    """
+    Obtiene todos los planes disponibles
+    
+    No requiere autenticación
+    """
+    try:
+        planes = scraper.db.obtener_planes()
+        return jsonify({
+            'success': True,
+            'planes': planes
+        }), 200
+    except Exception as e:
+        print(f"❌ Error obteniendo planes: {e}")
+        return jsonify({
+            'error': 'Error obteniendo planes',
+            'detalle': str(e)
+        }), 500
+
+# ==================== ENDPOINTS DE SUSCRIPCIONES ====================
+
+@app.route('/api/v1/suscripciones/mi-plan', methods=['GET'])
+@jwt_required()
+def obtener_mi_plan():
+    """
+    Obtiene el plan actual del usuario autenticado
+    
+    Requiere: Authorization: Bearer <token>
+    """
+    try:
+        usuario_id = get_jwt_identity()
         
+        suscripcion = scraper.db.obtener_suscripcion_activa(usuario_id)
         
+        if not suscripcion:
+            return jsonify({
+                'success': False,
+                'error': 'No tienes una suscripción activa'
+            }), 404
+        
+        limite_info = scraper.db.verificar_limite_fuentes(usuario_id)
+        
+        return jsonify({
+            'success': True,
+            'suscripcion': suscripcion,
+            'limite_info': limite_info
+        }), 200
+        
+    except Exception as e:
+        print(f"❌ Error obteniendo plan: {e}")
+        return jsonify({
+            'error': 'Error obteniendo plan',
+            'detalle': str(e)
+        }), 500
+
+@app.route('/api/v1/suscripciones/cambiar', methods=['POST'])
+@jwt_required()
+def cambiar_plan():
+    """
+    Cambia el plan del usuario (después de un pago exitoso)
+    
+    Body JSON requerido:
+    {
+        "plan_id": 2,
+        "pago_id": 123
+    }
+    """
+    try:
+        usuario_id = get_jwt_identity()
+        datos = request.get_json()
+        
+        if 'plan_id' not in datos or 'pago_id' not in datos:
+            return jsonify({
+                'error': 'Faltan campos requeridos: plan_id, pago_id'
+            }), 400
+        
+        pago = scraper.db.obtener_pago(datos['pago_id'])
+        
+        if not pago:
+            return jsonify({
+                'error': 'Pago no encontrado'
+            }), 404
+        
+        if pago['estado'] != 'completado':
+            return jsonify({
+                'error': 'El pago no está completado',
+                'estado': pago['estado']
+            }), 400
+        
+        if pago['user_id'] != usuario_id:
+            return jsonify({
+                'error': 'Este pago no pertenece a tu usuario'
+            }), 403
+        
+        suscripcion = scraper.db.crear_suscripcion(usuario_id, datos['plan_id'])
+        
+        if not suscripcion:
+            return jsonify({
+                'error': 'No se pudo crear la suscripción'
+            }), 500
+        
+        return jsonify({
+            'success': True,
+            'mensaje': '✅ Plan actualizado exitosamente',
+            'suscripcion': suscripcion
+        }), 200
+        
+    except Exception as e:
+        print(f"❌ Error cambiando plan: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'error': 'Error cambiando plan',
+            'detalle': str(e)
+        }), 500
+
+# ==================== ENDPOINTS DE PAGOS ====================
+
+@app.route('/api/v1/pagos/crear', methods=['POST'])
+@jwt_required()
+def crear_pago():
+    """
+    Crea un pago para un plan
+    
+    Body JSON requerido:
+    {
+        "plan_id": 2,
+        "metodo_pago": "yape" | "paypal" | "stripe"
+    }
+    """
+    try:
+        usuario_id = get_jwt_identity()
+        datos = request.get_json()
+        
+        if 'plan_id' not in datos or 'metodo_pago' not in datos:
+            return jsonify({
+                'error': 'Faltan campos requeridos: plan_id, metodo_pago'
+            }), 400
+        
+        plan_id = datos['plan_id']
+        metodo_pago = datos['metodo_pago'].lower()
+        
+        if metodo_pago not in ['yape', 'paypal', 'stripe']:
+            return jsonify({
+                'error': 'Método de pago no válido. Opciones: yape, paypal, stripe'
+            }), 400
+        
+        plan = scraper.db.obtener_plan(plan_id)
+        if not plan:
+            return jsonify({
+                'error': 'Plan no encontrado'
+            }), 404
+        
+        usuario = scraper.db.obtener_usuario_por_id(usuario_id)
+        
+        pago = scraper.db.crear_pago(
+            user_id=usuario_id,
+            plan_id=plan_id,
+            metodo_pago=metodo_pago,
+            monto=float(plan['precio'])
+        )
+        
+        if not pago:
+            return jsonify({
+                'error': 'No se pudo registrar el pago'
+            }), 500
+        
+        processor = PaymentFactory.get_processor(metodo_pago)
+        
+        if metodo_pago == 'yape':
+            resultado = processor.generar_qr(
+                monto=float(plan['precio']),
+                plan_nombre=plan['nombre'],
+                pago_id=pago['id']
+            )
+            
+            return jsonify({
+                'success': True,
+                'metodo': 'yape',
+                'pago_id': pago['id'],
+                'qr_data': resultado
+            }), 200
+            
+        elif metodo_pago == 'paypal':
+            resultado = processor.crear_pago(
+                monto=float(plan['precio']),
+                plan_nombre=plan['nombre'],
+                plan_id=plan_id,
+                user_email=usuario['email']
+            )
+            
+            if resultado.get('success'):
+                scraper.db.actualizar_estado_pago(pago['id'], 'pendiente')
+                
+                return jsonify({
+                    'success': True,
+                    'metodo': 'paypal',
+                    'pago_id': pago['id'],
+                    'approval_url': resultado['approval_url'],
+                    'payment_id': resultado['payment_id']
+                }), 200
+            else:
+                return jsonify({
+                    'error': 'Error creando pago PayPal',
+                    'detalle': resultado.get('error')
+                }), 500
+                
+        elif metodo_pago == 'stripe':
+            resultado = processor.crear_sesion_checkout(
+                monto=float(plan['precio']),
+                plan_nombre=plan['nombre'],
+                plan_id=plan_id,
+                user_email=usuario['email'],
+                pago_id=pago['id']
+            )
+            
+            if resultado.get('success'):
+                return jsonify({
+                    'success': True,
+                    'metodo': 'stripe',
+                    'pago_id': pago['id'],
+                    'checkout_url': resultado['checkout_url'],
+                    'session_id': resultado['session_id']
+                }), 200
+            else:
+                return jsonify({
+                    'error': 'Error creando sesión Stripe',
+                    'detalle': resultado.get('error')
+                }), 500
+        
+    except Exception as e:
+        print(f"❌ Error creando pago: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'error': 'Error creando pago',
+            'detalle': str(e)
+        }), 500
+
+@app.route('/api/v1/pagos/verificar-yape', methods=['POST'])
+@jwt_required()
+def verificar_pago_yape():
+    """
+    Verifica un pago de Yape (subir comprobante)
+    
+    Body JSON requerido:
+    {
+        "pago_id": 123,
+        "comprobante_img": "base64..." (opcional)
+    }
+    """
+    try:
+        usuario_id = get_jwt_identity()
+        datos = request.get_json()
+        
+        if 'pago_id' not in datos:
+            return jsonify({
+                'error': 'Falta campo requerido: pago_id'
+            }), 400
+        
+        pago_id = datos['pago_id']
+        
+        pago = scraper.db.obtener_pago(pago_id)
+        
+        if not pago:
+            return jsonify({
+                'error': 'Pago no encontrado'
+            }), 404
+        
+        if pago['user_id'] != usuario_id:
+            return jsonify({
+                'error': 'Este pago no pertenece a tu usuario'
+            }), 403
+        
+        if pago['metodo_pago'] != 'yape':
+            return jsonify({
+                'error': 'Este pago no es de Yape'
+            }), 400
+        
+        scraper.db.actualizar_estado_pago(pago_id, 'pendiente_verificacion')
+        
+        return jsonify({
+            'success': True,
+            'mensaje': 'Comprobante recibido. Un administrador verificará tu pago en las próximas 24 horas.',
+            'pago_id': pago_id,
+            'estado': 'pendiente_verificacion'
+        }), 200
+        
+    except Exception as e:
+        print(f"❌ Error verificando pago Yape: {e}")
+        return jsonify({
+            'error': 'Error verificando pago',
+            'detalle': str(e)
+        }), 500
+
+@app.route('/api/v1/pagos/webhook/paypal', methods=['POST'])
+def webhook_paypal():
+    """Webhook para recibir notificaciones de PayPal"""
+    try:
+        webhook_data = request.get_json()
+        
+        processor = PaymentFactory.get_processor('paypal')
+        resultado = processor.verificar_webhook(webhook_data)
+        
+        if resultado.get('evento') == 'pago_completado':
+            payment_id = resultado.get('payment_id')
+            
+            pago = scraper.db.obtener_pago_por_referencia(payment_id)
+            
+            if pago:
+                scraper.db.actualizar_estado_pago(pago['id'], 'completado')
+                scraper.db.crear_suscripcion(pago['user_id'], pago['plan_id'])
+                print(f"✅ Pago PayPal completado: {payment_id}")
+        
+        return jsonify({'success': True}), 200
+        
+    except Exception as e:
+        print(f"❌ Error en webhook PayPal: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/v1/pagos/webhook/stripe', methods=['POST'])
+def webhook_stripe():
+    """Webhook para recibir notificaciones de Stripe"""
+    try:
+        payload = request.data
+        sig_header = request.headers.get('Stripe-Signature')
+        
+        processor = PaymentFactory.get_processor('stripe')
+        resultado = processor.verificar_webhook(payload, sig_header)
+        
+        if resultado.get('evento') == 'pago_completado':
+            metadata = resultado.get('metadata', {})
+            pago_id = metadata.get('pago_id')
+            
+            if pago_id:
+                pago = scraper.db.obtener_pago(int(pago_id))
+                
+                if pago:
+                    scraper.db.actualizar_estado_pago(pago['id'], 'completado')
+                    scraper.db.crear_suscripcion(pago['user_id'], pago['plan_id'])
+                    print(f"✅ Pago Stripe completado: {pago_id}")
+        
+        return jsonify({'success': True}), 200
+        
+    except Exception as e:
+        print(f"❌ Error en webhook Stripe: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/v1/pagos/mis-pagos', methods=['GET'])
+@jwt_required()
+def obtener_mis_pagos():
+    """Obtiene el historial de pagos del usuario"""
+    try:
+        usuario_id = get_jwt_identity()
+        pagos = scraper.db.obtener_pagos_usuario(usuario_id)
+        
+        return jsonify({
+            'success': True,
+            'pagos': pagos
+        }), 200
+        
+    except Exception as e:
+        print(f"❌ Error obteniendo pagos: {e}")
+        return jsonify({
+            'error': 'Error obteniendo pagos',
+            'detalle': str(e)
+        }), 500
+
+# ==================== ENDPOINTS DE ADMINISTRACIÓN ====================
+
+@app.route('/api/v1/admin/pagos/pendientes', methods=['GET'])
+@admin_required
+def obtener_pagos_pendientes():
+    """Obtiene todos los pagos pendientes de verificación (solo admin)"""
+    try:
+        from psycopg2.extras import RealDictCursor
+        connection = scraper.db.get_connection()
+        cursor = connection.cursor(cursor_factory=RealDictCursor)
+        
+        cursor.execute("""
+            SELECT p.*, pl.nombre as plan_nombre, u.nombre_usuario, u.email
+            FROM pagos p
+            JOIN planes pl ON p.plan_id = pl.id
+            JOIN usuarios u ON p.user_id = u.id
+            WHERE p.estado = 'pendiente_verificacion'
+            ORDER BY p.fecha_pago DESC
+        """)
+        
+        pagos = [dict(row) for row in cursor.fetchall()]
+        cursor.close()
+        connection.close()
+        
+        return jsonify({
+            'success': True,
+            'pagos': pagos
+        }), 200
+        
+    except Exception as e:
+        print(f"❌ Error obteniendo pagos pendientes: {e}")
+        return jsonify({
+            'error': 'Error obteniendo pagos',
+            'detalle': str(e)
+        }), 500
+
+@app.route('/api/v1/admin/pagos/<int:pago_id>/aprobar', methods=['POST'])
+@admin_required
+def aprobar_pago(pago_id):
+    """Aprueba manualmente un pago (solo admin)"""
+    try:
+        usuario_id = get_jwt_identity()
+        
+        pago = scraper.db.obtener_pago(pago_id)
+        
+        if not pago:
+            return jsonify({
+                'error': 'Pago no encontrado'
+            }), 404
+        
+        scraper.db.actualizar_estado_pago(pago_id, 'completado', verificado_por=usuario_id)
+        scraper.db.crear_suscripcion(pago['user_id'], pago['plan_id'])
+        
+        return jsonify({
+            'success': True,
+            'mensaje': 'Pago aprobado y suscripción activada'
+        }), 200
+        
+    except Exception as e:
+        print(f"❌ Error aprobando pago: {e}")
+        return jsonify({
+            'error': 'Error aprobando pago',
+            'detalle': str(e)
+        }), 500
+
 # ==================== MANEJADORES DE ERRORES JWT ====================
-# <--- ¡AQUÍ EMPIEZA EL BLOQUE AGREGADO!
+
 @jwt.expired_token_loader
 def expired_token_callback(jwt_header, jwt_payload):
     """Maneja tokens expirados"""
@@ -1144,8 +1589,7 @@ def missing_token_callback(error):
         'error': 'Token requerido',
         'mensaje': 'Este endpoint requiere autenticación. Incluye el header: Authorization: Bearer <token>'
     }), 401
-# <--- ¡AQUÍ TERMINA EL BLOQUE AGREGADO!
-        
+
 # ==================== MANEJO DE ERRORES ====================
 
 @app.errorhandler(404)
