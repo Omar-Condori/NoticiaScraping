@@ -1,0 +1,404 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "API de Scraping de Noticias con Autenticación JWT",
+    "description": "API REST para scrapear, almacenar y gestionar noticias de múltiples fuentes con autenticación segura",
+    "version": "3.0.0",
+    "contact": {
+      "name": "API Support"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8001",
+      "description": "Servidor de desarrollo local"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Autenticación",
+      "description": "Registro, login y gestión de usuarios"
+    },
+    {
+      "name": "Scraping",
+      "description": "Operaciones de scraping de noticias"
+    },
+    {
+      "name": "Noticias",
+      "description": "Gestión de noticias guardadas"
+    },
+    {
+      "name": "Categorías",
+      "description": "Gestión de categorías de noticias"
+    },
+    {
+      "name": "Fuentes",
+      "description": "Gestión de fuentes de noticias"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Ingresa el token JWT obtenido del login"
+      }
+    },
+    "schemas": {
+      "UsuarioRegistro": {
+        "type": "object",
+        "required": ["nombre_usuario", "email", "contrasena"],
+        "properties": {
+          "nombre_usuario": {
+            "type": "string",
+            "example": "admin"
+          },
+          "email": {
+            "type": "string",
+            "example": "admin@ejemplo.com"
+          },
+          "contrasena": {
+            "type": "string",
+            "example": "admin123"
+          }
+        }
+      },
+      "UsuarioLogin": {
+        "type": "object",
+        "required": ["nombre_usuario", "contrasena"],
+        "properties": {
+          "nombre_usuario": {
+            "type": "string",
+            "example": "admin"
+          },
+          "contrasena": {
+            "type": "string",
+            "example": "admin123"
+          }
+        }
+      },
+      "Usuario": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "integer"},
+          "nombre_usuario": {"type": "string"},
+          "email": {"type": "string"},
+          "fecha_creacion": {"type": "string"},
+          "activo": {"type": "boolean"}
+        }
+      },
+      "Noticia": {
+        "type": "object",
+        "properties": {
+          "titulo": {"type": "string"},
+          "url": {"type": "string"},
+          "resumen": {"type": "string"},
+          "imagen_url": {"type": "string"},
+          "categoria": {"type": "string"},
+          "fuente": {"type": "string"},
+          "fuente_id": {"type": "integer"}
+        }
+      },
+      "Fuente": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "integer"},
+          "nombre": {"type": "string"},
+          "url": {"type": "string"},
+          "activo": {"type": "boolean"}
+        }
+      },
+      "FuenteInput": {
+        "type": "object",
+        "required": ["nombre", "url"],
+        "properties": {
+          "nombre": {
+            "type": "string",
+            "example": "Los Andes Puno"
+          },
+          "url": {
+            "type": "string",
+            "example": "https://www.losandes.com.pe/puno/"
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/": {
+      "get": {
+        "tags": ["default"],
+        "summary": "Información de la API",
+        "responses": {
+          "200": {
+            "description": "Información de la API"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/register": {
+      "post": {
+        "tags": ["Autenticación"],
+        "summary": "🆕 Registrar nuevo usuario",
+        "description": "Crea una nueva cuenta de usuario y retorna un token JWT",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UsuarioRegistro"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Usuario registrado exitosamente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {"type": "boolean"},
+                    "mensaje": {"type": "string"},
+                    "usuario": {"$ref": "#/components/schemas/Usuario"},
+                    "access_token": {"type": "string"}
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error en el registro"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/login": {
+      "post": {
+        "tags": ["Autenticación"],
+        "summary": "🔐 Iniciar sesión",
+        "description": "Autentica un usuario y retorna un token JWT",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UsuarioLogin"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Login exitoso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {"type": "boolean"},
+                    "mensaje": {"type": "string"},
+                    "usuario": {"$ref": "#/components/schemas/Usuario"},
+                    "access_token": {"type": "string"}
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Credenciales inválidas"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/perfil": {
+      "get": {
+        "tags": ["Autenticación"],
+        "summary": "👤 Obtener perfil del usuario",
+        "description": "Retorna la información del usuario autenticado",
+        "security": [{"bearerAuth": []}],
+        "responses": {
+          "200": {
+            "description": "Perfil obtenido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {"type": "boolean"},
+                    "usuario": {"$ref": "#/components/schemas/Usuario"}
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token inválido o expirado"
+          }
+        }
+      }
+    },
+    "/api/v1/scraping/ejecutar": {
+      "post": {
+        "tags": ["Scraping"],
+        "summary": "🔥 Ejecutar scraping de noticias",
+        "description": "Endpoint principal que scrapea noticias. REQUIERE AUTENTICACIÓN JWT",
+        "security": [{"bearerAuth": []}],
+        "parameters": [
+          {
+            "name": "limite",
+            "in": "query",
+            "schema": {"type": "integer", "default": 5}
+          },
+          {
+            "name": "fuente_id",
+            "in": "query",
+            "schema": {"type": "integer"}
+          }
+        ],
+        "responses": {
+          "200": {"description": "Scraping ejecutado exitosamente"},
+          "401": {"description": "Token JWT requerido"}
+        }
+      }
+    },
+    "/api/v1/noticias": {
+      "get": {
+        "tags": ["Noticias"],
+        "summary": "Obtener noticias guardadas",
+        "parameters": [
+          {
+            "name": "limite",
+            "in": "query",
+            "schema": {"type": "integer", "default": 50}
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {"type": "integer", "default": 0}
+          },
+          {
+            "name": "fuente_id",
+            "in": "query",
+            "schema": {"type": "integer"}
+          },
+          {
+            "name": "categoria",
+            "in": "query",
+            "schema": {"type": "string"}
+          }
+        ],
+        "responses": {
+          "200": {"description": "Noticias obtenidas"}
+        }
+      },
+      "delete": {
+        "tags": ["Noticias"],
+        "summary": "Eliminar todas las noticias",
+        "responses": {
+          "200": {"description": "Noticias eliminadas"}
+        }
+      }
+    },
+    "/api/v1/noticias/contar": {
+      "get": {
+        "tags": ["Noticias"],
+        "summary": "Contar noticias",
+        "responses": {
+          "200": {"description": "Conteo exitoso"}
+        }
+      }
+    },
+    "/api/v1/categorias": {
+      "get": {
+        "tags": ["Categorías"],
+        "summary": "Listar categorías únicas",
+        "responses": {
+          "200": {"description": "Categorías obtenidas"}
+        }
+      }
+    },
+    "/api/v1/fuentes": {
+      "get": {
+        "tags": ["Fuentes"],
+        "summary": "Listar fuentes",
+        "parameters": [
+          {
+            "name": "activas",
+            "in": "query",
+            "schema": {"type": "boolean", "default": false}
+          }
+        ],
+        "responses": {
+          "200": {"description": "Lista de fuentes"}
+        }
+      },
+      "post": {
+        "tags": ["Fuentes"],
+        "summary": "Agregar fuente (solo nombre y url)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FuenteInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {"description": "Fuente agregada"}
+        }
+      }
+    },
+    "/api/v1/fuentes/{id}": {
+      "get": {
+        "tags": ["Fuentes"],
+        "summary": "Obtener fuente",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {"type": "integer"}
+          }
+        ],
+        "responses": {
+          "200": {"description": "Fuente obtenida"}
+        }
+      },
+      "put": {
+        "tags": ["Fuentes"],
+        "summary": "Actualizar fuente",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {"type": "integer"}
+          }
+        ],
+        "responses": {
+          "200": {"description": "Fuente actualizada"}
+        }
+      },
+      "delete": {
+        "tags": ["Fuentes"],
+        "summary": "Eliminar fuente",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {"type": "integer"}
+          }
+        ],
+        "responses": {
+          "200": {"description": "Fuente eliminada"}
+        }
+      }
+    }
+  }
+}
