@@ -32,8 +32,8 @@ class PaymentConfig:
     """Configuración de métodos de pago"""
     
     # YAPE (Perú)
-    YAPE_NUMERO = "987654321"  # ⚠️ CAMBIA ESTO por tu número de Yape
-    YAPE_NOMBRE = "Tu Negocio SAC"  # ⚠️ CAMBIA ESTO
+    YAPE_NUMERO = "960899657"  # ⚠️ CAMBIA ESTO por tu número de Yape
+    YAPE_NOMBRE = "Omar condori"  # ⚠️ CAMBIA ESTO
     
     # STRIPE
     STRIPE_SECRET_KEY = "sk_test_..."  # ⚠️ CAMBIA ESTO por tu clave secreta de Stripe

@@ -900,11 +900,12 @@ def reanudar_tarea_programada(nombre):
             'detalle': str(e)
         }), 500
 
+
 # ==================== ENDPOINTS DE ESTADÍSTICAS ====================
 
-@app.route('/api/v1/scraping/estadisticas', methods=['GET'])
+@app.route('/api/v1/estadisticas', methods=['GET'])
 def obtener_estadisticas():
-    """Obtiene estadísticas generales del sistema"""
+    """📊 Estadísticas generales del sistema (PÚBLICO)"""
     try:
         stats = estadisticas_module.obtener_estadisticas_generales()
         return jsonify({
@@ -919,19 +920,12 @@ def obtener_estadisticas():
 
 @app.route('/api/v1/estadisticas/tendencias', methods=['GET'])
 def obtener_tendencias():
-    """
-    Obtiene tendencias de scraping por día
-    
-    Query params:
-        - dias: número de días atrás (default: 7)
-    """
-    dias = request.args.get('dias', default=7, type=int)
-    
+    """📈 Tendencias de scraping por día"""
     try:
+        dias = request.args.get('dias', default=7, type=int)
         tendencias = estadisticas_module.obtener_tendencias(dias)
         return jsonify({
             'success': True,
-            'dias': dias,
             'tendencias': tendencias
         }), 200
     except Exception as e:
@@ -941,24 +935,33 @@ def obtener_tendencias():
         }), 500
 
 @app.route('/api/v1/estadisticas/top-fuentes', methods=['GET'])
-def obtener_top_fuentes():
-    """
-    Obtiene las fuentes con más noticias
-    
-    Query params:
-        - limite: número de fuentes (default: 5)
-    """
-    limite = request.args.get('limite', default=5, type=int)
-    
+def obtener_top_fuentes_endpoint():
+    """🏆 Top fuentes con más noticias"""
     try:
-        top = estadisticas_module.obtener_top_fuentes(limite)
+        limite = request.args.get('limite', default=5, type=int)
+        top_fuentes = estadisticas_module.obtener_top_fuentes(limite)
         return jsonify({
             'success': True,
-            'top_fuentes': top
+            'top_fuentes': top_fuentes
         }), 200
     except Exception as e:
         return jsonify({
             'error': 'Error obteniendo top fuentes',
+            'detalle': str(e)
+        }), 500
+
+@app.route('/api/v1/scraping/estadisticas', methods=['GET'])
+def obtener_estadisticas_scraping():
+    """📊 Estadísticas de scraping (ALIAS)"""
+    try:
+        stats = estadisticas_module.obtener_estadisticas_generales()
+        return jsonify({
+            'success': True,
+            'estadisticas': stats
+        }), 200
+    except Exception as e:
+        return jsonify({
+            'error': 'Error obteniendo estadísticas',
             'detalle': str(e)
         }), 500
 
