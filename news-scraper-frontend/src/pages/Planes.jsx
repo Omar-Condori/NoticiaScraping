@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
-import { obtenerPlanes } from '../services/api';
+import { planesAPI } from '../services/api';
 import { Crown, Check, Zap, Shield, Sparkles, AlertCircle } from 'lucide-react';
 import PagoModal from '../components/PagoModal';
 
@@ -18,10 +18,10 @@ export default function Planes() {
   const cargarPlanes = async () => {
     try {
       setLoading(true);
-      const response = await obtenerPlanes();
+      const response = await planesAPI.listar(); // ← CORREGIDO
       
       // Parsear las features desde JSON
-      const planesConFeatures = response.planes.map(plan => ({
+      const planesConFeatures = response.data.planes.map(plan => ({ // ← CORREGIDO: response.data.planes
         ...plan,
         features: plan.features || []
       }));

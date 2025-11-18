@@ -1,405 +1,283 @@
+import axios from 'axios';
+
 const API_URL = 'http://localhost:8001/api/v1';
 
-// Función helper para obtener el token y headers
+// ==================== CONFIGURACIÓN DE AXIOS ====================
 const getAuthHeaders = () => {
   const token = localStorage.getItem('token');
-  return {
-    'Content-Type': 'application/json',
-    ...(token && { 'Authorization': `Bearer ${token}` }),
-  };
+  return token ? { Authorization: `Bearer ${token}` } : {};
 };
 
-// ==================== AUTENTICACIÓN ====================
-
+// ==================== AUTH API ====================
 export const authAPI = {
-  login: async (nombre_usuario, contrasena) => {
-    const response = await fetch(`${API_URL}/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nombre_usuario, contrasena }),
-    });
-    return response.json();
+  register: (userData) => {
+    return axios.post(`${API_URL}/auth/register`, userData);
   },
-
-  register: async (nombre_usuario, email, contrasena) => {
-    const response = await fetch(`${API_URL}/auth/register`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nombre_usuario, email, contrasena }),
-    });
-    return response.json();
+  
+  login: (credentials) => {
+    return axios.post(`${API_URL}/auth/login`, credentials);
   },
-
-  getProfile: async () => {
-    const response = await fetch(`${API_URL}/auth/perfil`, {
-      headers: getAuthHeaders(),
+  
+  perfil: () => {
+    return axios.get(`${API_URL}/auth/perfil`, {
+      headers: getAuthHeaders()
     });
-    return response.json();
-  },
+  }
 };
 
-// ==================== SCRAPING ====================
-
-export const scrapingAPI = {
-  ejecutar: async (limite = 5, fuenteId = null) => {
-    const params = new URLSearchParams({ limite: limite.toString() });
-    if (fuenteId) params.append('fuente_id', fuenteId);
-
-    const response = await fetch(`${API_URL}/scraping/ejecutar?${params}`, {
-      method: 'POST',
-      headers: getAuthHeaders(),
-    });
-    return response.json();
-  },
-};
-
-// ==================== NOTICIAS ====================
-
+// ==================== NOTICIAS API ====================
 export const noticiasAPI = {
-  obtener: async (limite = 50, offset = 0, fuenteId = null, categoria = null) => {
-    const params = new URLSearchParams({
-      limite: limite.toString(),
-      offset: offset.toString(),
-    });
-    if (fuenteId) params.append('fuente_id', fuenteId);
-    if (categoria) params.append('categoria', categoria);
-
-    try {
-      const response = await fetch(`${API_URL}/noticias?${params}`, {
-        headers: getAuthHeaders()
-      });
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      return await response.json();
-    } catch (error) {
-      console.error('Error fetching noticias:', error);
-      return {
-        success: false,
-        error: 'No se pudo conectar al servidor. Verifica que el backend esté corriendo.',
-        noticias: [],
-        total: 0
-      };
-    }
-  },
-
-  contar: async () => {
-    const response = await fetch(`${API_URL}/noticias/contar`, {
+  obtener: (params = {}) => {
+    return axios.get(`${API_URL}/noticias`, {
+      params,
       headers: getAuthHeaders()
     });
-    return response.json();
   },
-
-  limpiar: async () => {
-    const response = await fetch(`${API_URL}/noticias`, {
-      method: 'DELETE',
+  
+  contar: () => {
+    return axios.get(`${API_URL}/noticias/contar`);
+  },
+  
+  limpiar: () => {
+    return axios.delete(`${API_URL}/noticias`, {
       headers: getAuthHeaders()
     });
-    return response.json();
   },
-
-  buscar: async (query, fuenteId, fechaDesde, fechaHasta, limite = 50) => {
-    const params = new URLSearchParams({ limite: limite.toString() });
-    if (query) params.append('q', query);
-    if (fuenteId) params.append('fuente_id', fuenteId);
-    if (fechaDesde) params.append('fecha_desde', fechaDesde);
-    if (fechaHasta) params.append('fecha_hasta', fechaHasta);
-
-    const response = await fetch(`${API_URL}/noticias/buscar?${params}`, {
-      headers: getAuthHeaders()
-    });
-    return response.json();
+  
+  buscar: (params) => {
+    return axios.get(`${API_URL}/noticias/buscar`, { params });
   },
-
-  exportar: async (formato = 'json', limite = 100, fuenteId = null) => {
-    const params = new URLSearchParams({
-      formato,
-      limite: limite.toString(),
+  
+  exportar: (formato = 'json', limite = 100) => {
+    return axios.get(`${API_URL}/noticias/exportar`, {
+      params: { formato, limite },
+      headers: getAuthHeaders(),
+      responseType: 'blob'
     });
-    if (fuenteId) params.append('fuente_id', fuenteId);
-
-    const response = await fetch(`${API_URL}/noticias/exportar?${params}`, {
-      headers: getAuthHeaders()
-    });
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    return response.blob();
-  },
+  }
 };
 
-// ==================== CATEGORÍAS ====================
-
+// ==================== CATEGORIAS API ====================
 export const categoriasAPI = {
-  obtener: async () => {
-    try {
-      const response = await fetch(`${API_URL}/categorias`, {
-        headers: getAuthHeaders()
-      });
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      return await response.json();
-    } catch (error) {
-      console.error('Error fetching categorias:', error);
-      return {
-        success: false,
-        error: 'No se pudo conectar al servidor. Verifica que el backend esté corriendo.',
-        categorias: []
-      };
-    }
-  },
+  obtener: () => {
+    return axios.get(`${API_URL}/categorias`, {
+      headers: getAuthHeaders()
+    });
+  }
 };
 
-// ==================== FUENTES ====================
-
+// ==================== FUENTES API ====================
 export const fuentesAPI = {
-  listar: async (soloActivas = false) => {
-    const params = new URLSearchParams();
-    if (soloActivas) params.append('activas', 'true');
-
-    try {
-      const response = await fetch(`${API_URL}/fuentes?${params}`, {
-        headers: getAuthHeaders()
-      });
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      return await response.json();
-    } catch (error) {
-      console.error('Error fetching fuentes:', error);
-      return {
-        success: false,
-        error: 'No se pudo conectar al servidor. Verifica que el backend esté corriendo.',
-        fuentes: [],
-        total: 0
-      };
-    }
-  },
-
-  obtener: async (id) => {
-    const response = await fetch(`${API_URL}/fuentes/${id}`, {
+  listar: (soloActivas = false) => {
+    return axios.get(`${API_URL}/fuentes`, {
+      params: { activas: soloActivas },
       headers: getAuthHeaders()
     });
-    return response.json();
   },
-
-  crear: async (nombre, url) => {
-    const response = await fetch(`${API_URL}/fuentes`, {
-      method: 'POST',
-      headers: getAuthHeaders(),
-      body: JSON.stringify({ nombre, url }),
+  
+  obtener: (id) => {
+    return axios.get(`${API_URL}/fuentes/${id}`, {
+      headers: getAuthHeaders()
     });
-    return response.json();
   },
-
-  actualizar: async (id, datos) => {
-    const response = await fetch(`${API_URL}/fuentes/${id}`, {
-      method: 'PUT',
-      headers: getAuthHeaders(),
-      body: JSON.stringify(datos),
+  
+  agregar: (fuenteData) => {
+    return axios.post(`${API_URL}/fuentes`, fuenteData, {
+      headers: getAuthHeaders()
     });
-    return response.json();
   },
-
-  eliminar: async (id) => {
-    const response = await fetch(`${API_URL}/fuentes/${id}`, {
-      method: 'DELETE',
-      headers: getAuthHeaders(),
+  
+  actualizar: (id, fuenteData) => {
+    return axios.put(`${API_URL}/fuentes/${id}`, fuenteData, {
+      headers: getAuthHeaders()
     });
-    return response.json();
   },
+  
+  eliminar: (id) => {
+    return axios.delete(`${API_URL}/fuentes/${id}`, {
+      headers: getAuthHeaders()
+    });
+  }
 };
 
-// ==================== ESTADÍSTICAS ====================
+// ==================== SCRAPING API ====================
+export const scrapingAPI = {
+  ejecutar: (params = {}) => {
+    return axios.post(`${API_URL}/scraping/ejecutar`, null, {
+      params,
+      headers: getAuthHeaders()
+    });
+  },
+  
+  estadisticas: () => {
+    return axios.get(`${API_URL}/scraping/estadisticas`, {
+      headers: getAuthHeaders()
+    });
+  }
+};
 
+// ==================== ESTADÍSTICAS API ====================
 export const estadisticasAPI = {
-  generales: async () => {
-    const response = await fetch(`${API_URL}/estadisticas`, {
-      headers: getAuthHeaders()
-    });
-    return response.json();
+  generales: () => {
+    return axios.get(`${API_URL}/estadisticas`);
   },
-
-  tendencias: async (dias = 7) => {
-    const response = await fetch(`${API_URL}/estadisticas/tendencias?dias=${dias}`, {
-      headers: getAuthHeaders()
+  
+  tendencias: (dias = 7) => {
+    return axios.get(`${API_URL}/estadisticas/tendencias`, {
+      params: { dias }
     });
-    return response.json();
   },
-
-  topFuentes: async (limite = 5) => {
-    const response = await fetch(`${API_URL}/estadisticas/top-fuentes?limite=${limite}`, {
-      headers: getAuthHeaders()
+  
+  topFuentes: (limite = 5) => {
+    return axios.get(`${API_URL}/estadisticas/top-fuentes`, {
+      params: { limite }
     });
-    return response.json();
-  },
+  }
 };
 
-// ==================== SCHEDULER ====================
-
+// ==================== SCHEDULER API ====================
 export const schedulerAPI = {
-  listarTareas: async () => {
-    const response = await fetch(`${API_URL}/scheduler/tareas`, {
+  listarTareas: () => {
+    return axios.get(`${API_URL}/scheduler/tareas`);
+  },
+  
+  crearTarea: (tareaData) => {
+    return axios.post(`${API_URL}/scheduler/tareas`, tareaData);
+  },
+  
+  obtenerTarea: (nombre) => {
+    return axios.get(`${API_URL}/scheduler/tareas/${nombre}`);
+  },
+  
+  eliminarTarea: (nombre) => {
+    return axios.delete(`${API_URL}/scheduler/tareas/${nombre}`);
+  },
+  
+  pausarTarea: (nombre) => {
+    return axios.post(`${API_URL}/scheduler/tareas/${nombre}/pausar`);
+  },
+  
+  reanudarTarea: (nombre) => {
+    return axios.post(`${API_URL}/scheduler/tareas/${nombre}/reanudar`);
+  }
+};
+
+// ==================== PLANES API ====================
+export const planesAPI = {
+  listar: () => {
+    return axios.get(`${API_URL}/planes`);
+  },
+  
+  miPlan: () => {
+    return axios.get(`${API_URL}/suscripciones/mi-plan`, {
       headers: getAuthHeaders()
     });
-    return response.json();
+  },
+  
+  cambiarPlan: (planData) => {
+    return axios.post(`${API_URL}/suscripciones/cambiar`, planData, {
+      headers: getAuthHeaders()
+    });
+  }
+};
+
+// ==================== PAGOS API ====================
+export const pagosAPI = {
+  crear: (pagoData) => {
+    return axios.post(`${API_URL}/pagos/crear`, pagoData, {
+      headers: getAuthHeaders()
+    });
+  },
+  
+  verificarYape: (pagoData) => {
+    return axios.post(`${API_URL}/pagos/verificar-yape`, pagoData, {
+      headers: getAuthHeaders()
+    });
+  },
+  
+  misPagos: () => {
+    return axios.get(`${API_URL}/pagos/mis-pagos`, {
+      headers: getAuthHeaders()
+    });
+  }
+};
+
+// ==================== SUSCRIPCIONES API ====================
+export const suscripcionesAPI = {
+  miPlan: () => {
+    return axios.get(`${API_URL}/suscripciones/mi-plan`, {
+      headers: getAuthHeaders()
+    });
+  },
+  
+  cambiar: (suscripcionData) => {
+    return axios.post(`${API_URL}/suscripciones/cambiar`, suscripcionData, {
+      headers: getAuthHeaders()
+    });
+  }
+};
+
+// ==================== ADMIN API ====================
+export const adminAPI = {
+  obtenerResumen: () => {
+    return axios.get(`${API_URL}/admin/stats/resumen`, {
+      headers: getAuthHeaders()
+    });
   },
 
-  crearTarea: async (nombre, intervaloMinutos, fuenteId = null, limite = 5) => {
-    const response = await fetch(`${API_URL}/scheduler/tareas`, {
-      method: 'POST',
-      headers: getAuthHeaders(),
-      body: JSON.stringify({
-        nombre,
-        intervalo_minutos: intervaloMinutos,
-        fuente_id: fuenteId,
-        limite,
-      }),
+  obtenerUsuariosPorPlan: () => {
+    return axios.get(`${API_URL}/admin/stats/usuarios-por-plan`, {
+      headers: getAuthHeaders()
     });
-    return response.json();
   },
 
-  obtenerTarea: async (nombre) => {
-    const response = await fetch(`${API_URL}/scheduler/tareas/${nombre}`, {
+  obtenerIngresosMensuales: (meses = 6) => {
+    return axios.get(`${API_URL}/admin/stats/ingresos-mensuales`, {
+      params: { meses },
       headers: getAuthHeaders()
     });
-    return response.json();
   },
 
-  eliminarTarea: async (nombre) => {
-    const response = await fetch(`${API_URL}/scheduler/tareas/${nombre}`, {
-      method: 'DELETE',
+  obtenerUsuariosRecientes: (limite = 10) => {
+    return axios.get(`${API_URL}/admin/usuarios/recientes`, {
+      params: { limite },
       headers: getAuthHeaders()
     });
-    return response.json();
   },
 
-  pausarTarea: async (nombre) => {
-    const response = await fetch(`${API_URL}/scheduler/tareas/${nombre}/pausar`, {
-      method: 'POST',
+  obtenerPagosRecientes: (limite = 10) => {
+    return axios.get(`${API_URL}/admin/pagos/recientes`, {
+      params: { limite },
       headers: getAuthHeaders()
     });
-    return response.json();
   },
 
-  reanudarTarea: async (nombre) => {
-    const response = await fetch(`${API_URL}/scheduler/tareas/${nombre}/reanudar`, {
-      method: 'POST',
+  obtenerPagosPendientes: () => {
+    return axios.get(`${API_URL}/admin/pagos/pendientes`, {
       headers: getAuthHeaders()
     });
-    return response.json();
   },
-};
 
-// ==================== PLANES Y SUSCRIPCIONES ====================
-
-// Obtener todos los planes disponibles
-export const obtenerPlanes = async () => {
-  try {
-    const response = await fetch(`${API_URL}/planes`, {
+  aprobarPago: (pagoId) => {
+    return axios.post(`${API_URL}/admin/pagos/${pagoId}/aprobar`, {}, {
       headers: getAuthHeaders()
     });
-    return await response.json();
-  } catch (error) {
-    console.error('Error obteniendo planes:', error);
-    throw error;
   }
 };
 
-// Obtener mi plan actual
-export const obtenerMiPlan = async () => {
-  try {
-    const response = await fetch(`${API_URL}/suscripciones/mi-plan`, {
-      headers: getAuthHeaders()
-    });
-    return await response.json();
-  } catch (error) {
-    console.error('Error obteniendo mi plan:', error);
-    throw error;
-  }
+// ==================== EXPORTACIÓN DEFAULT (para compatibilidad) ====================
+const api = {
+  auth: authAPI,
+  noticias: noticiasAPI,
+  categorias: categoriasAPI,
+  fuentes: fuentesAPI,
+  scraping: scrapingAPI,
+  estadisticas: estadisticasAPI,
+  scheduler: schedulerAPI,
+  planes: planesAPI,
+  pagos: pagosAPI,
+  suscripciones: suscripcionesAPI,
+  admin: adminAPI
 };
 
-// Cambiar de plan
-export const cambiarPlan = async (planId, pagoId) => {
-  try {
-    const response = await fetch(`${API_URL}/suscripciones/cambiar`, {
-      method: 'POST',
-      headers: getAuthHeaders(),
-      body: JSON.stringify({
-        plan_id: planId,
-        pago_id: pagoId
-      })
-    });
-    return await response.json();
-  } catch (error) {
-    console.error('Error cambiando plan:', error);
-    throw error;
-  }
-};
-
-// ==================== PAGOS ====================
-
-// Crear un pago
-export const crearPago = async (planId, metodoPago) => {
-  try {
-    const response = await fetch(`${API_URL}/pagos/crear`, {
-      method: 'POST',
-      headers: getAuthHeaders(),
-      body: JSON.stringify({
-        plan_id: planId,
-        metodo_pago: metodoPago
-      })
-    });
-    return await response.json();
-  } catch (error) {
-    console.error('Error creando pago:', error);
-    throw error;
-  }
-};
-
-// Verificar pago de Yape
-export const verificarPagoYape = async (pagoId, comprobanteImg = null) => {
-  try {
-    const response = await fetch(`${API_URL}/pagos/verificar-yape`, {
-      method: 'POST',
-      headers: getAuthHeaders(),
-      body: JSON.stringify({
-        pago_id: pagoId,
-        comprobante_img: comprobanteImg
-      })
-    });
-    return await response.json();
-  } catch (error) {
-    console.error('Error verificando pago Yape:', error);
-    throw error;
-  }
-};
-
-// Obtener historial de pagos
-export const obtenerMisPagos = async () => {
-  try {
-    const response = await fetch(`${API_URL}/pagos/mis-pagos`, {
-      headers: getAuthHeaders()
-    });
-    return await response.json();
-  } catch (error) {
-    console.error('Error obteniendo pagos:', error);
-    throw error;
-  }
-};
-
-// ==================== ESTADÍSTICAS DE SCRAPING ====================
-
-// Obtener estadísticas de scraping del usuario
-export const obtenerEstadisticasScraping = async () => {
-  try {
-    const response = await fetch(`${API_URL}/scraping/estadisticas`, {
-      headers: getAuthHeaders()
-    });
-    return await response.json();
-  } catch (error) {
-    console.error('Error obteniendo estadísticas de scraping:', error);
-    throw error;
-  }
-};
+export default api;

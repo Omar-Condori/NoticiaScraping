@@ -37,20 +37,26 @@ export default function Estadisticas(){
     cargarDatos();
   }, [diasTendencias, limiteFuentes]);
 
+  // ✅ FUNCIÓN CORREGIDA: cargarDatos
   const cargarDatos = async () => {
     setLoading(true);
     try {
-      const [statsRes, tendenciasRes, topRes] = await Promise.all([
+      // ✅ CORRECCIÓN: Construir parámetros correctamente
+      const [statsResponse, tendenciasResponse, topResponse] = await Promise.all([
         estadisticasAPI.generales(),
-        estadisticasAPI.tendencias(diasTendencias),
-        estadisticasAPI.topFuentes(limiteFuentes)
+        estadisticasAPI.tendencias({ dias: diasTendencias }),
+        estadisticasAPI.topFuentes({ limite: limiteFuentes })
       ]);
 
-      setEstadisticas(statsRes.estadisticas);
-      setTendencias(tendenciasRes.tendencias || []);
-      setTopFuentes(topRes.top_fuentes || []);
+      // ✅ CORRECCIÓN: Acceder a response.data
+      setEstadisticas(statsResponse.data?.estadisticas || null);
+      setTendencias(tendenciasResponse.data?.tendencias || []);
+      setTopFuentes(topResponse.data?.top_fuentes || []);
     } catch (error) {
       console.error('Error cargando estadísticas:', error);
+      setEstadisticas(null);
+      setTendencias([]);
+      setTopFuentes([]);
     } finally {
       setLoading(false);
     }
@@ -277,36 +283,42 @@ export default function Estadisticas(){
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {topFuentes.map((fuente, index) => (
-                <div 
-                  key={index}
-                  className="flex items-center justify-between p-3 bg-dark-hover rounded-lg"
-                >
-                  <div className="flex items-center gap-3">
-                    <div 
-                      className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-sm"
-                      style={{ backgroundColor: COLORS[index % COLORS.length] }}
-                    >
-                      {index + 1}
+              {topFuentes.length > 0 ? (
+                topFuentes.map((fuente, index) => (
+                  <div 
+                    key={index}
+                    className="flex items-center justify-between p-3 bg-dark-hover rounded-lg"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div 
+                        className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-sm"
+                        style={{ backgroundColor: COLORS[index % COLORS.length] }}
+                      >
+                        {index + 1}
+                      </div>
+                      <div>
+                        <p className="text-white font-medium">{fuente.nombre}</p>
+                        <p className="text-xs text-gray-500">
+                          {fuente.ultima_actualizacion && 
+                            format(new Date(fuente.ultima_actualizacion), "dd MMM, HH:mm", { locale: es })
+                          }
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-white font-medium">{fuente.nombre}</p>
-                      <p className="text-xs text-gray-500">
-                        {fuente.ultima_actualizacion && 
-                          format(new Date(fuente.ultima_actualizacion), "dd MMM, HH:mm", { locale: es })
-                        }
-                      </p>
-                    </div>
+                    <Badge variant="primary">
+                      {fuente.total_noticias} noticias
+                    </Badge>
                   </div>
-                  <Badge variant="primary">
-                    {fuente.total_noticias} noticias
-                  </Badge>
+                ))
+              ) : (
+                <div className="text-center py-8 text-gray-400">
+                  No hay datos disponibles
                 </div>
-              ))}
+              )}
             </div>
           </CardContent>
         </Card>
       </div>
     </div>
   );
-};
+}

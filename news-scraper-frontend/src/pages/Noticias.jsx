@@ -1,4 +1,3 @@
-// Similar a Dashboard.jsx, con las mismas actualizaciones
 import { useState, useEffect } from 'react';
 import { noticiasAPI, fuentesAPI, categoriasAPI } from '../services/api';
 import Card from '../components/ui/Card';
@@ -24,21 +23,33 @@ export default function Noticias() {
   const [totalNoticias, setTotalNoticias] = useState(0);
   const [totalPaginas, setTotalPaginas] = useState(0);
 
+  // ✅ FUNCIÓN CORREGIDA: cargarNoticias
   const cargarNoticias = async () => {
     setLoading(true);
     setError('');
 
     try {
       const offset = (paginaActual - 1) * limite;
-      // Convertir fuenteSeleccionada a número si existe y no está vacío
-      const fuenteId = fuenteSeleccionada && fuenteSeleccionada !== '' ? parseInt(fuenteSeleccionada, 10) : null;
       
-      const data = await noticiasAPI.obtener(
-        limite,
-        offset,
-        fuenteId,
-        categoriaSeleccionada || null
-      );
+      // ✅ CORRECCIÓN: Construir objeto de parámetros
+      const params = {
+        limite: limite,
+        offset: offset
+      };
+
+      // Solo agregar fuente_id si está seleccionada
+      if (fuenteSeleccionada && fuenteSeleccionada !== '') {
+        params.fuente_id = parseInt(fuenteSeleccionada, 10);
+      }
+
+      // Solo agregar categoría si está seleccionada
+      if (categoriaSeleccionada && categoriaSeleccionada !== '') {
+        params.categoria = categoriaSeleccionada;
+      }
+
+      // ✅ Llamar a la API con objeto de parámetros
+      const response = await noticiasAPI.obtener(params);
+      const data = response.data;
 
       // Si hay error de conexión, mostrar mensaje pero no lanzar excepción
       if (data && data.success === false && data.error && data.error.includes('No se pudo conectar')) {
@@ -60,6 +71,7 @@ export default function Noticias() {
         setTotalPaginas(0);
       }
     } catch (err) {
+      console.error('Error en cargarNoticias:', err);
       setError(err.message || 'Error al cargar las noticias');
       setNoticias([]);
       setTotalNoticias(0);
@@ -69,23 +81,24 @@ export default function Noticias() {
     }
   };
 
-  // Cargar fuentes y categorías
+  // ✅ CARGAR FUENTES Y CATEGORÍAS - CORREGIDO
   useEffect(() => {
     const cargarDatos = async () => {
       try {
-        const [fuentesData, categoriasData] = await Promise.all([
+        const [fuentesResponse, categoriasResponse] = await Promise.all([
           fuentesAPI.listar(true),
           categoriasAPI.obtener(),
         ]);
 
-        if (fuentesData && fuentesData.success !== false) {
-          setFuentes(fuentesData.fuentes || []);
+        // ✅ Acceder a response.data
+        if (fuentesResponse?.data && fuentesResponse.data.success !== false) {
+          setFuentes(fuentesResponse.data.fuentes || []);
         } else {
           setFuentes([]);
         }
 
-        if (categoriasData && categoriasData.success !== false) {
-          setCategorias(categoriasData.categorias || []);
+        if (categoriasResponse?.data && categoriasResponse.data.success !== false) {
+          setCategorias(categoriasResponse.data.categorias || []);
         } else {
           setCategorias([]);
         }
@@ -109,9 +122,24 @@ export default function Noticias() {
     setPaginaActual(1);
   }, [fuenteSeleccionada, categoriaSeleccionada, limite]);
 
+  // ✅ FUNCIÓN CORREGIDA: handleExportar
   const handleExportar = async (formato) => {
     try {
-      const blob = await noticiasAPI.exportar(formato, 100, fuenteSeleccionada || null);
+      // ✅ CORRECCIÓN: Construir objeto de parámetros
+      const params = {
+        formato: formato,
+        limite: 100
+      };
+
+      // Solo agregar fuente si está seleccionada
+      if (fuenteSeleccionada && fuenteSeleccionada !== '') {
+        params.fuente_id = parseInt(fuenteSeleccionada, 10);
+      }
+
+      const response = await noticiasAPI.exportar(params);
+      
+      // Si la respuesta es un blob
+      const blob = response.data;
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -119,6 +147,7 @@ export default function Noticias() {
       a.click();
       window.URL.revokeObjectURL(url);
     } catch (err) {
+      console.error('Error al exportar:', err);
       setError('Error al exportar noticias');
     }
   };
@@ -128,8 +157,8 @@ export default function Noticias() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Noticias Guardadas</h1>
-          <p className="text-gray-600 dark:text-gray-400 mt-1">
+          <h1 className="text-3xl font-bold text-white">Noticias Guardadas</h1>
+          <p className="text-gray-400 mt-1">
             {totalNoticias > 0 ? (
               <>Mostrando {noticias.length} de {totalNoticias} noticias (Página {paginaActual} de {totalPaginas})</>
             ) : (
@@ -159,22 +188,22 @@ export default function Noticias() {
       </div>
 
       {/* Filtros */}
-      <div className="bg-light-card dark:bg-dark-card border border-light-border dark:border-dark-border rounded-xl p-6">
+      <div className="bg-dark-card border border-dark-border rounded-xl p-6">
         <div className="flex items-center gap-2 mb-4">
           <Filter className="w-5 h-5 text-accent-primary" />
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Filtros</h2>
+          <h2 className="text-lg font-semibold text-white">Filtros</h2>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Selector de Fuente */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            <label className="block text-sm font-medium text-gray-300 mb-2">
               Fuente
             </label>
             <select
               value={fuenteSeleccionada}
               onChange={(e) => setFuenteSeleccionada(e.target.value)}
-              className="w-full px-4 py-2 bg-light-hover dark:bg-dark-hover border border-light-border dark:border-dark-border rounded-lg text-gray-900 dark:text-white focus:ring-2 focus:ring-accent-primary focus:border-transparent"
+              className="w-full px-4 py-2 bg-dark-hover border border-dark-border rounded-lg text-white focus:ring-2 focus:ring-accent-primary focus:border-transparent"
             >
               <option value="">Todas las fuentes</option>
               {fuentes.map((fuente) => (
@@ -187,7 +216,7 @@ export default function Noticias() {
 
           {/* Selector de Categoría */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            <label className="block text-sm font-medium text-gray-300 mb-2">
               <div className="flex items-center gap-2">
                 <Tag className="w-4 h-4" />
                 Categoría
@@ -196,7 +225,7 @@ export default function Noticias() {
             <select
               value={categoriaSeleccionada}
               onChange={(e) => setCategoriaSeleccionada(e.target.value)}
-              className="w-full px-4 py-2 bg-light-hover dark:bg-dark-hover border border-light-border dark:border-dark-border rounded-lg text-gray-900 dark:text-white focus:ring-2 focus:ring-accent-primary focus:border-transparent"
+              className="w-full px-4 py-2 bg-dark-hover border border-dark-border rounded-lg text-white focus:ring-2 focus:ring-accent-primary focus:border-transparent"
             >
               <option value="">Todas las categorías</option>
               {categorias.map((categoria) => (
@@ -209,13 +238,13 @@ export default function Noticias() {
 
           {/* Límite */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            <label className="block text-sm font-medium text-gray-300 mb-2">
               Noticias por página
             </label>
             <select
               value={limite}
               onChange={(e) => setLimite(Number(e.target.value))}
-              className="w-full px-4 py-2 bg-light-hover dark:bg-dark-hover border border-light-border dark:border-dark-border rounded-lg text-gray-900 dark:text-white focus:ring-2 focus:ring-accent-primary focus:border-transparent"
+              className="w-full px-4 py-2 bg-dark-hover border border-dark-border rounded-lg text-white focus:ring-2 focus:ring-accent-primary focus:border-transparent"
             >
               <option value={6}>6</option>
               <option value={12}>12</option>
@@ -245,8 +274,8 @@ export default function Noticias() {
           ))}
         </div>
       ) : noticias.length === 0 ? (
-        <div className="bg-light-card dark:bg-dark-card border border-light-border dark:border-dark-border rounded-xl p-12 text-center">
-          <p className="text-gray-600 dark:text-gray-400 text-lg">No hay noticias disponibles</p>
+        <div className="bg-dark-card border border-dark-border rounded-xl p-12 text-center">
+          <p className="text-gray-400 text-lg">No hay noticias disponibles</p>
         </div>
       ) : (
         <>
@@ -258,8 +287,8 @@ export default function Noticias() {
 
           {/* Paginación */}
           {totalPaginas > 1 && (
-              <div className="flex items-center justify-between mt-8 pt-6 border-t border-light-border dark:border-dark-border">
-              <div className="text-sm text-gray-600 dark:text-gray-400">
+            <div className="flex items-center justify-between mt-8 pt-6 border-t border-dark-border">
+              <div className="text-sm text-gray-400">
                 Página {paginaActual} de {totalPaginas}
               </div>
               
@@ -296,7 +325,7 @@ export default function Noticias() {
                         className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
                           paginaActual === pageNum
                             ? 'bg-accent-primary text-white'
-                            : 'bg-light-hover dark:bg-dark-hover text-gray-700 dark:text-gray-300 hover:bg-light-border dark:hover:bg-dark-border'
+                            : 'bg-dark-hover text-gray-300 hover:bg-dark-border'
                         }`}
                       >
                         {pageNum}

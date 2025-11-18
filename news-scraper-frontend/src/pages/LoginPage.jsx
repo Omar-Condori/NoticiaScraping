@@ -37,7 +37,26 @@ export default function LoginPage() {
     const result = await login(formData.nombre_usuario, formData.contrasena);
 
     if (result.success) {
-      navigate('/');
+      // ✅ REDIRIGIR SEGÚN EL ROL DEL USUARIO
+      const userStr = localStorage.getItem('user');
+      if (userStr) {
+        try {
+          const user = JSON.parse(userStr);
+          
+          // Si es admin, redirigir a /admin
+          if (user.rol === 'admin') {
+            navigate('/admin');
+          } else {
+            // Usuario normal va al dashboard
+            navigate('/');
+          }
+        } catch (e) {
+          console.error('Error al parsear usuario:', e);
+          navigate('/');
+        }
+      } else {
+        navigate('/');
+      }
     } else {
       setError(result.error);
     }

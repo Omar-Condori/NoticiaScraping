@@ -1,15 +1,15 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom'; // <--- AGREGADO
-import { useApp } from '../context/AppContext'; // <--- AGREGADO
+import { Link } from 'react-router-dom';
+import { useApp } from '../context/AppContext';
 import { fuentesAPI } from '../services/api';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import Modal from '../components/ui/Modal';
 import Badge from '../components/ui/Badge';
-import { Plus, Edit, Trash2, Globe, CheckCircle, XCircle, AlertCircle, Crown } from 'lucide-react'; // <--- Crown agregado
+import { Plus, Edit, Trash2, Globe, CheckCircle, XCircle, AlertCircle, Crown } from 'lucide-react';
 
 export default function Fuentes() {
-  const { limiteFuentes, loadingPlan } = useApp(); // <--- AGREGADO
+  const { limiteFuentes, loadingPlan } = useApp();
   const [fuentes, setFuentes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modalAbierto, setModalAbierto] = useState(false);
@@ -25,11 +25,15 @@ export default function Fuentes() {
     cargarFuentes();
   }, []);
 
+  // ✅ FUNCIÓN CORREGIDA: cargarFuentes
   const cargarFuentes = async () => {
     setLoading(true);
     setError('');
     try {
-      const data = await fuentesAPI.listar();
+      // ✅ CORRECCIÓN: Acceder a response.data
+      const response = await fuentesAPI.listar();
+      const data = response.data;
+      
       if (data && data.success === false && data.error && data.error.includes('No se pudo conectar')) {
         setError(data.error);
         setFuentes([]);
@@ -43,6 +47,7 @@ export default function Fuentes() {
         setFuentes([]);
       }
     } catch (err) {
+      console.error('Error en cargarFuentes:', err);
       setError(err.message || 'Error al cargar fuentes');
       setFuentes([]);
     } finally {
@@ -50,12 +55,13 @@ export default function Fuentes() {
     }
   };
 
+  // ✅ FUNCIÓN CORREGIDA: handleSubmit
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setSuccess('');
 
-    // <--- AGREGADO: Verificar límite antes de crear
+    // Verificar límite antes de crear
     if (limiteFuentes && !limiteFuentes.puede_agregar) {
       setError('Has alcanzado el límite de fuentes de tu plan. Actualiza tu plan para agregar más fuentes.');
       return;
@@ -74,7 +80,13 @@ export default function Fuentes() {
     }
 
     try {
-      const data = await fuentesAPI.crear(formData.nombre, formData.url);
+      // ✅ CORRECCIÓN: Pasar objeto en vez de parámetros separados
+      const response = await fuentesAPI.agregar({
+        nombre: formData.nombre,
+        url: formData.url
+      });
+      
+      const data = response.data;
 
       if (data.success) {
         setSuccess('✅ Fuente agregada exitosamente con selectores por defecto');
@@ -94,20 +106,27 @@ export default function Fuentes() {
         throw new Error(data.error || 'Error al crear fuente');
       }
     } catch (err) {
+      console.error('Error en handleSubmit:', err);
       setError(err.message || 'Error al agregar fuente');
     }
   };
 
+  // ✅ FUNCIÓN CORREGIDA: handleEliminar
   const handleEliminar = async (id, nombre) => {
     if (!window.confirm(`¿Eliminar la fuente "${nombre}"?`)) return;
 
     try {
-      const data = await fuentesAPI.eliminar(id);
+      const response = await fuentesAPI.eliminar(id);
+      const data = response.data;
+      
       if (data.success) {
         setSuccess('Fuente eliminada');
         cargarFuentes();
+      } else {
+        setError(data.error || 'Error al eliminar fuente');
       }
     } catch (err) {
+      console.error('Error en handleEliminar:', err);
       setError('Error al eliminar fuente');
     }
   };
@@ -119,13 +138,13 @@ export default function Fuentes() {
     });
   };
 
-  // <--- AGREGADO: Verificar si llegó al límite
+  // Verificar si llegó al límite
   const puedeAgregarFuente = !limiteFuentes || limiteFuentes.puede_agregar;
   const enLimite = limiteFuentes && !limiteFuentes.puede_agregar;
 
   return (
     <div className="space-y-6">
-      {/* <--- AGREGADO: Banner de advertencia de límite */}
+      {/* Banner de advertencia de límite */}
       {enLimite && (
         <div className="bg-yellow-500/10 border-2 border-yellow-500/50 rounded-xl p-6">
           <div className="flex items-start gap-4">
@@ -157,7 +176,6 @@ export default function Fuentes() {
           <h1 className="text-3xl font-bold text-white">Fuentes de Noticias</h1>
           <p className="text-gray-400 mt-1">
             Gestiona las fuentes de scraping
-            {/* <--- AGREGADO: Mostrar contador */}
             {limiteFuentes && (
               <span className="ml-2">
                 ({limiteFuentes.actuales} de {limiteFuentes.limite === -1 ? '∞' : limiteFuentes.limite} fuentes)
@@ -166,7 +184,6 @@ export default function Fuentes() {
           </p>
         </div>
 
-        {/* <--- MODIFICADO: Botón deshabilitado si llegó al límite */}
         <Button 
           onClick={() => setModalAbierto(true)} 
           className="gap-2"
@@ -204,6 +221,22 @@ export default function Fuentes() {
         <div className="text-center py-12">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-accent-primary mx-auto"></div>
           <p className="text-gray-400 mt-4">Cargando fuentes...</p>
+        </div>
+      ) : fuentes.length === 0 ? (
+        <div className="bg-dark-card border border-dark-border rounded-xl p-12 text-center">
+          <Globe className="w-16 h-16 text-gray-600 mx-auto mb-4" />
+          <h3 className="text-xl font-semibold text-white mb-2">No hay fuentes configuradas</h3>
+          <p className="text-gray-400 mb-6">
+            Agrega tu primera fuente de noticias para comenzar el scraping
+          </p>
+          <Button 
+            onClick={() => setModalAbierto(true)}
+            disabled={!puedeAgregarFuente}
+            className="gap-2"
+          >
+            <Plus className="w-4 h-4" />
+            Agregar Primera Fuente
+          </Button>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

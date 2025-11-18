@@ -1,5 +1,4 @@
 import { createContext, useContext, useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 
 const AppContext = createContext();
 
@@ -16,7 +15,6 @@ export const AppProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(null);
   const [loading, setLoading] = useState(true);
-  const navigate = useNavigate();
 
   // ==================== ESTADO DE PLANES ====================
   const [planActual, setPlanActual] = useState(null);
@@ -115,6 +113,7 @@ export const AppProvider = ({ children }) => {
     }
   };
 
+  // ✅ CAMBIO CRÍTICO: Eliminamos useNavigate() y usamos window.location
   const logout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
@@ -123,7 +122,8 @@ export const AppProvider = ({ children }) => {
     setPlanActual(null);
     setLimiteFuentes(null);
     setLimiteScraping(null);
-    navigate('/login');
+    // Usar window.location en lugar de navigate
+    window.location.href = '/login';
   };
 
   const getProfile = async () => {

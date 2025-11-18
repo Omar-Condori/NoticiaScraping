@@ -9,7 +9,7 @@ from busqueda import BusquedaAvanzada
 from exportar import Exportador
 from auth import AuthManager
 from payments import PaymentFactory, PaymentConfig
-from middleware import admin_required, get_user_info, verificar_limite_fuentes, verificar_limite_scraping  # <--- MODIFICADO
+from middleware import admin_required, get_user_info, verificar_limite_fuentes, verificar_limite_scraping
 import json
 from datetime import timedelta
 
@@ -64,7 +64,7 @@ def home():
         'mensaje': '🚀 API de Scraping de Noticias con Autenticación JWT',
         'version': '3.0.0',
         'documentacion': f'http://localhost:8001{SWAGGER_URL}',
-        'nuevas_funcionalidades': '⭐ JWT Authentication, Scheduler, Búsqueda Avanzada, Estadísticas, Exportación, Imágenes, Categorías, Planes y Pagos',
+        'nuevas_funcionalidades': '⭐ JWT Authentication, Scheduler, Búsqueda Avanzada, Estadísticas, Exportación, Imágenes, Categorías, Planes y Pagos, Panel Admin',
         'endpoints': {
             'documentacion': '/docs',
             'autenticacion': {
@@ -81,6 +81,15 @@ def home():
                 'crear': 'POST /api/v1/pagos/crear (requiere JWT)',
                 'mis_pagos': 'GET /api/v1/pagos/mis-pagos (requiere JWT)',
                 'verificar_yape': 'POST /api/v1/pagos/verificar-yape (requiere JWT)'
+            },
+            'admin': {
+                'resumen': 'GET /api/v1/admin/stats/resumen (requiere admin)',
+                'usuarios_por_plan': 'GET /api/v1/admin/stats/usuarios-por-plan (requiere admin)',
+                'ingresos_mensuales': 'GET /api/v1/admin/stats/ingresos-mensuales (requiere admin)',
+                'usuarios_recientes': 'GET /api/v1/admin/usuarios/recientes (requiere admin)',
+                'pagos_recientes': 'GET /api/v1/admin/pagos/recientes (requiere admin)',
+                'pagos_pendientes': 'GET /api/v1/admin/pagos/pendientes (requiere admin)',
+                'aprobar_pago': 'POST /api/v1/admin/pagos/{id}/aprobar (requiere admin)'
             },
             'scraping': {
                 'scrapear_ahora': 'POST /api/v1/scraping/ejecutar (requiere JWT)',
@@ -305,7 +314,7 @@ def obtener_perfil():
 # ==================== ENDPOINTS DE SCRAPING ====================
 
 @app.route('/api/v1/scraping/ejecutar', methods=['POST'])
-@verificar_limite_scraping  # <--- MODIFICADO: Cambié de @jwt_required() a @verificar_limite_scraping
+@verificar_limite_scraping
 def ejecutar_scraping():
     """
     🔥 ENDPOINT PRINCIPAL: Ejecuta el scraping de noticias
@@ -346,7 +355,6 @@ def ejecutar_scraping():
             noticias = scraper.scrape_todas_fuentes(limite, guardar, solo_activas=True, user_id=usuario_id)
             mensaje = 'Scraping completado de todas las fuentes'
         
-        # <--- AGREGADO: Incrementar contador de scraping diario
         cantidad_scrapeada = len(noticias)
         if cantidad_scrapeada > 0:
             scraper.db.incrementar_scraping_diario(usuario_id, cantidad_scrapeada)
@@ -370,7 +378,6 @@ def ejecutar_scraping():
             'detalle': str(e)
         }), 500
 
-# <--- AGREGADO: Nuevo endpoint de estadísticas de scraping
 @app.route('/api/v1/scraping/estadisticas', methods=['GET'])
 @jwt_required()
 def estadisticas_scraping():
@@ -378,7 +385,6 @@ def estadisticas_scraping():
     try:
         usuario_id = get_jwt_identity()
         
-        # Obtener info del plan
         suscripcion = scraper.db.obtener_suscripcion_activa(usuario_id)
         limite_info = scraper.db.verificar_limite_scraping(usuario_id)
         
@@ -950,21 +956,6 @@ def obtener_top_fuentes_endpoint():
             'detalle': str(e)
         }), 500
 
-@app.route('/api/v1/scraping/estadisticas', methods=['GET'])
-def obtener_estadisticas_scraping():
-    """📊 Estadísticas de scraping (ALIAS)"""
-    try:
-        stats = estadisticas_module.obtener_estadisticas_generales()
-        return jsonify({
-            'success': True,
-            'estadisticas': stats
-        }), 200
-    except Exception as e:
-        return jsonify({
-            'error': 'Error obteniendo estadísticas',
-            'detalle': str(e)
-        }), 500
-
 # ==================== ENDPOINTS DE BÚSQUEDA ====================
 
 @app.route('/api/v1/noticias/buscar', methods=['GET'])
@@ -1504,27 +1495,137 @@ def obtener_mis_pagos():
 
 # ==================== ENDPOINTS DE ADMINISTRACIÓN ====================
 
-@app.route('/api/v1/admin/pagos/pendientes', methods=['GET'])
-@admin_required
-def obtener_pagos_pendientes():
-    """Obtiene todos los pagos pendientes de verificación (solo admin)"""
+@app.route('/api/v1/admin/stats/resumen', methods=['GET'])
+@jwt_required()
+def admin_resumen_general():
+    """📊 Resumen general del sistema (SOLO ADMIN)"""
     try:
-        from psycopg2.extras import RealDictCursor
-        connection = scraper.db.get_connection()
-        cursor = connection.cursor(cursor_factory=RealDictCursor)
+        from flask_jwt_extended import get_jwt
+        claims = get_jwt()
+        rol = claims.get('rol', 'usuario')
         
-        cursor.execute("""
-            SELECT p.*, pl.nombre as plan_nombre, u.nombre_usuario, u.email
-            FROM pagos p
-            JOIN planes pl ON p.plan_id = pl.id
-            JOIN usuarios u ON p.user_id = u.id
-            WHERE p.estado = 'pendiente_verificacion'
-            ORDER BY p.fecha_pago DESC
-        """)
+        if rol != 'admin':
+            return jsonify({
+                'error': 'Acceso denegado. Solo administradores.'
+            }), 403
         
-        pagos = [dict(row) for row in cursor.fetchall()]
-        cursor.close()
-        connection.close()
+        from admin_stats import AdminStats
+        admin_stats = AdminStats()
+        
+        resumen = admin_stats.obtener_resumen_general()
+        
+        return jsonify({
+            'success': True,
+            'resumen': resumen
+        }), 200
+        
+    except Exception as e:
+        print(f"❌ Error en admin resumen: {e}")
+        return jsonify({
+            'error': 'Error obteniendo resumen',
+            'detalle': str(e)
+        }), 500
+
+@app.route('/api/v1/admin/stats/usuarios-por-plan', methods=['GET'])
+@jwt_required()
+def admin_usuarios_por_plan():
+    """📦 Distribución de usuarios por plan (SOLO ADMIN)"""
+    try:
+        from flask_jwt_extended import get_jwt
+        claims = get_jwt()
+        rol = claims.get('rol', 'usuario')
+        
+        if rol != 'admin':
+            return jsonify({'error': 'Acceso denegado'}), 403
+        
+        from admin_stats import AdminStats
+        admin_stats = AdminStats()
+        
+        distribucion = admin_stats.obtener_usuarios_por_plan()
+        
+        return jsonify({
+            'success': True,
+            'distribucion': distribucion
+        }), 200
+        
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/v1/admin/stats/ingresos-mensuales', methods=['GET'])
+@jwt_required()
+def admin_ingresos_mensuales():
+    """💰 Ingresos de los últimos meses (SOLO ADMIN)"""
+    try:
+        from flask_jwt_extended import get_jwt
+        claims = get_jwt()
+        rol = claims.get('rol', 'usuario')
+        
+        if rol != 'admin':
+            return jsonify({'error': 'Acceso denegado'}), 403
+        
+        meses = request.args.get('meses', default=6, type=int)
+        
+        from admin_stats import AdminStats
+        admin_stats = AdminStats()
+        
+        ingresos = admin_stats.obtener_ingresos_mensuales(meses)
+        
+        return jsonify({
+            'success': True,
+            'ingresos': ingresos
+        }), 200
+        
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/v1/admin/usuarios/recientes', methods=['GET'])
+@jwt_required()
+def admin_usuarios_recientes():
+    """👥 Últimos usuarios registrados (SOLO ADMIN)"""
+    try:
+        from flask_jwt_extended import get_jwt
+        claims = get_jwt()
+        rol = claims.get('rol', 'usuario')
+        
+        if rol != 'admin':
+            return jsonify({'error': 'Acceso denegado'}), 403
+        
+        limite = request.args.get('limite', default=10, type=int)
+        
+        from admin_stats import AdminStats
+        admin_stats = AdminStats()
+        
+        usuarios = admin_stats.obtener_ultimos_usuarios(limite)
+        
+        return jsonify({
+            'success': True,
+            'usuarios': usuarios
+        }), 200
+        
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/v1/admin/pagos/recientes', methods=['GET'])
+@jwt_required()
+def admin_pagos_recientes():
+    """💳 Pagos recientes (SOLO ADMIN)"""
+    try:
+        from flask_jwt_extended import get_jwt
+        claims = get_jwt()
+        rol = claims.get('rol', 'usuario')
+        
+        if rol != 'admin':
+            return jsonify({'error': 'Acceso denegado'}), 403
+        
+        limite = request.args.get('limite', default=10, type=int)
+        
+        from admin_stats import AdminStats
+        admin_stats = AdminStats()
+        
+        pagos = admin_stats.obtener_pagos_recientes(limite)
         
         return jsonify({
             'success': True,
@@ -1532,17 +1633,47 @@ def obtener_pagos_pendientes():
         }), 200
         
     except Exception as e:
-        print(f"❌ Error obteniendo pagos pendientes: {e}")
+        print(f"❌ Error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/v1/admin/pagos/pendientes', methods=['GET'])
+@jwt_required()
+def admin_pagos_pendientes():
+    """⏳ Pagos pendientes de verificación (SOLO ADMIN)"""
+    try:
+        from flask_jwt_extended import get_jwt
+        claims = get_jwt()
+        rol = claims.get('rol', 'usuario')
+        
+        if rol != 'admin':
+            return jsonify({'error': 'Acceso denegado'}), 403
+        
+        from admin_stats import AdminStats
+        admin_stats = AdminStats()
+        
+        pagos = admin_stats.obtener_pagos_pendientes()
+        
         return jsonify({
-            'error': 'Error obteniendo pagos',
-            'detalle': str(e)
-        }), 500
+            'success': True,
+            'pagos': pagos
+        }), 200
+        
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/v1/admin/pagos/<int:pago_id>/aprobar', methods=['POST'])
-@admin_required
-def aprobar_pago(pago_id):
-    """Aprueba manualmente un pago (solo admin)"""
+@jwt_required()
+def admin_aprobar_pago(pago_id):
+    """✅ Aprueba manualmente un pago (SOLO ADMIN)"""
     try:
+        from flask_jwt_extended import get_jwt
+        claims = get_jwt()
+        rol = claims.get('rol', 'usuario')
+        
+        if rol != 'admin':
+            return jsonify({'error': 'Acceso denegado'}), 403
+        
         usuario_id = get_jwt_identity()
         
         pago = scraper.db.obtener_pago(pago_id)
@@ -1552,8 +1683,33 @@ def aprobar_pago(pago_id):
                 'error': 'Pago no encontrado'
             }), 404
         
-        scraper.db.actualizar_estado_pago(pago_id, 'completado', verificado_por=usuario_id)
-        scraper.db.crear_suscripcion(pago['user_id'], pago['plan_id'])
+        # Actualizar estado del pago
+        scraper.db.actualizar_estado_pago(pago_id, 'aprobado')
+        
+        # Crear/actualizar suscripción
+        from datetime import datetime, timedelta
+        connection = scraper.db.get_connection()
+        cursor = connection.cursor()
+        
+        fecha_inicio = datetime.now()
+        fecha_vencimiento = fecha_inicio + timedelta(days=365)
+        
+        cursor.execute("""
+            INSERT INTO suscripciones (user_id, plan_id, fecha_inicio, fecha_vencimiento, activo, cancelado)
+            VALUES (%s, %s, %s, %s, TRUE, FALSE)
+            ON CONFLICT (user_id) DO UPDATE
+            SET plan_id = EXCLUDED.plan_id,
+                fecha_inicio = EXCLUDED.fecha_inicio,
+                fecha_vencimiento = EXCLUDED.fecha_vencimiento,
+                activo = TRUE,
+                cancelado = FALSE
+        """, (pago['user_id'], pago['plan_id'], fecha_inicio, fecha_vencimiento))
+        
+        connection.commit()
+        cursor.close()
+        connection.close()
+        
+        print(f"✅ Admin {usuario_id} aprobó pago {pago_id} para usuario {pago['user_id']}")
         
         return jsonify({
             'success': True,
@@ -1562,6 +1718,8 @@ def aprobar_pago(pago_id):
         
     except Exception as e:
         print(f"❌ Error aprobando pago: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({
             'error': 'Error aprobando pago',
             'detalle': str(e)
@@ -1617,6 +1775,7 @@ if __name__ == '__main__':
     print("="*60)
     print(f"📍 Servidor: http://localhost:8001")
     print(f"📖 Documentación: http://localhost:8001/docs")
+    print(f"👨‍💼 Panel Admin: Disponible en /api/v1/admin/*")
     print("="*60 + "\n")
     
     app.run(debug=True, host='0.0.0.0', port=8001)

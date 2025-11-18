@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { X, CreditCard, Smartphone, DollarSign, Check, Loader, AlertCircle } from 'lucide-react';
-import { crearPago, verificarPagoYape } from '../services/api';
+import { pagosAPI } from '../services/api'; // ← CORREGIDO
 
 export default function PagoModal({ plan, onClose, onSuccess }) {
   const [metodoPago, setMetodoPago] = useState(null);
@@ -40,7 +40,6 @@ export default function PagoModal({ plan, onClose, onSuccess }) {
     setMetodoPago(metodo);
     setError(null);
     
-    // Si es Yape, crear el pago inmediatamente
     if (metodo === 'yape') {
       await procesarPagoYape();
     }
@@ -51,13 +50,17 @@ export default function PagoModal({ plan, onClose, onSuccess }) {
       setLoading(true);
       setError(null);
 
-      const response = await crearPago(plan.id, 'yape');
+      // ← CORREGIDO: pagosAPI.crear()
+      const response = await pagosAPI.crear({
+        plan_id: plan.id,
+        metodo_pago: 'yape'
+      });
       
-      if (response.success) {
-        setPagoCreado(response);
-        setQrData(response.qr_data);
+      if (response.data.success) {
+        setPagoCreado(response.data);
+        setQrData(response.data.qr_data);
       } else {
-        setError(response.error || 'Error al crear el pago');
+        setError(response.data.error || 'Error al crear el pago');
       }
     } catch (error) {
       console.error('Error procesando pago Yape:', error);
@@ -72,14 +75,16 @@ export default function PagoModal({ plan, onClose, onSuccess }) {
       setLoading(true);
       setError(null);
 
-      const response = await verificarPagoYape(pagoCreado.pago_id);
+      // ← CORREGIDO: pagosAPI.verificarYape()
+      const response = await pagosAPI.verificarYape({
+        pago_id: pagoCreado.pago_id
+      });
       
-      if (response.success) {
-        // Mostrar mensaje de éxito
+      if (response.data.success) {
         alert('¡Comprobante enviado! Tu pago será verificado en las próximas 24 horas.');
         onSuccess();
       } else {
-        setError(response.error || 'Error al verificar el pago');
+        setError(response.data.error || 'Error al verificar el pago');
       }
     } catch (error) {
       console.error('Error confirmando pago Yape:', error);
@@ -94,13 +99,16 @@ export default function PagoModal({ plan, onClose, onSuccess }) {
       setLoading(true);
       setError(null);
 
-      const response = await crearPago(plan.id, 'paypal');
+      // ← CORREGIDO: pagosAPI.crear()
+      const response = await pagosAPI.crear({
+        plan_id: plan.id,
+        metodo_pago: 'paypal'
+      });
       
-      if (response.success && response.approval_url) {
-        // Redirigir a PayPal
-        window.location.href = response.approval_url;
+      if (response.data.success && response.data.approval_url) {
+        window.location.href = response.data.approval_url;
       } else {
-        setError(response.error || 'Error al crear el pago con PayPal');
+        setError(response.data.error || 'Error al crear el pago con PayPal');
       }
     } catch (error) {
       console.error('Error procesando pago PayPal:', error);
@@ -114,13 +122,16 @@ export default function PagoModal({ plan, onClose, onSuccess }) {
       setLoading(true);
       setError(null);
 
-      const response = await crearPago(plan.id, 'stripe');
+      // ← CORREGIDO: pagosAPI.crear()
+      const response = await pagosAPI.crear({
+        plan_id: plan.id,
+        metodo_pago: 'stripe'
+      });
       
-      if (response.success && response.checkout_url) {
-        // Redirigir a Stripe
-        window.location.href = response.checkout_url;
+      if (response.data.success && response.data.checkout_url) {
+        window.location.href = response.data.checkout_url;
       } else {
-        setError(response.error || 'Error al crear el pago con Stripe');
+        setError(response.data.error || 'Error al crear el pago con Stripe');
       }
     } catch (error) {
       console.error('Error procesando pago Stripe:', error);
@@ -215,7 +226,7 @@ export default function PagoModal({ plan, onClose, onSuccess }) {
                 </div>
               </div>
 
-              {/* Botón Continuar (solo para PayPal y Stripe) */}
+              {/* Botón Continuar */}
               {metodoPago && metodoPago !== 'yape' && (
                 <button
                   onClick={handleContinuar}

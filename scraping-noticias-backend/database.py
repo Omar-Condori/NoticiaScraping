@@ -27,7 +27,7 @@ class Database:
     # ==================== OPERACIONES DE ESQUEMA ====================
     
     def crear_tablas(self):
-        """Crea las tablas necesarias si no existen (usuarios, fuentes, noticias, planes, suscripciones, pagos)"""
+        """Crea las tablas necesarias si no existen (usuarios, fuentes, noticias, planes, suscripciones, pagos, scraping_diario)"""
         connection = self.get_connection()
         if not connection:
             print("❌ No se pudo conectar a la base de datos")
@@ -74,12 +74,23 @@ class Database:
                     id SERIAL PRIMARY KEY,
                     nombre VARCHAR(100) NOT NULL UNIQUE,
                     precio NUMERIC(10, 2) NOT NULL,
-                    limite_fuentes INTEGER NOT NULL DEFAULT 5, -- -1 para ilimitado
+                    limite_fuentes INTEGER NOT NULL DEFAULT 5,
+                    limite_scraping_diario INTEGER NOT NULL DEFAULT 30,
                     descripcion TEXT,
                     activo BOOLEAN DEFAULT TRUE,
                     fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            
+            # Agregar columna limite_scraping_diario si no existe
+            try:
+                cursor.execute("""
+                    ALTER TABLE planes 
+                    ADD COLUMN IF NOT EXISTS limite_scraping_diario INTEGER NOT NULL DEFAULT 30
+                """)
+            except Exception as e:
+                print(f"⚠️ Advertencia al agregar columna limite_scraping_diario: {e}")
+                pass
             
             # --- TABLA: suscripciones
             cursor.execute("""
@@ -192,6 +203,19 @@ class Database:
             except:
                 pass
             
+            # --- TABLA: scraping_diario (✅ NUEVO)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS scraping_diario (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER REFERENCES usuarios(id) ON DELETE CASCADE,
+                    fecha DATE NOT NULL DEFAULT CURRENT_DATE,
+                    cantidad INTEGER NOT NULL DEFAULT 0,
+                    plan_id INTEGER REFERENCES planes(id) ON DELETE SET NULL,
+                    fecha_actualizacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(user_id, fecha)
+                )
+            """)
+            
             # --- Índices ---
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_fuentes_user_id ON fuentes(user_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_noticias_fuente ON noticias(fuente_id)")
@@ -202,9 +226,10 @@ class Database:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_usuarios_nombre_usuario ON usuarios(nombre_usuario)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_usuarios_email ON usuarios(email)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_suscripciones_user_active ON suscripciones(user_id, activo)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_scraping_diario_user_fecha ON scraping_diario(user_id, fecha)")
             
             connection.commit()
-            print("✅ Tablas creadas exitosamente (incluyendo usuarios, planes, suscripciones y pagos)")
+            print("✅ Tablas creadas exitosamente (incluyendo usuarios, planes, suscripciones, pagos y scraping_diario)")
             return True
             
         except Exception as e:
@@ -359,7 +384,7 @@ class Database:
         
         try:
             cursor.execute("""
-                SELECT id, nombre, precio, limite_fuentes, descripcion, activo
+                SELECT id, nombre, precio, limite_fuentes, limite_scraping_diario, descripcion, activo
                 FROM planes 
                 WHERE activo = TRUE
                 ORDER BY precio ASC
@@ -468,13 +493,36 @@ class Database:
             # Obtener suscripción activa
             suscripcion = self.obtener_suscripcion_activa(user_id)
             
+            # ✅ SI NO HAY SUSCRIPCIÓN ACTIVA, USAR PLAN GRATUITO POR DEFECTO
             if not suscripcion:
-                return {
-                    'puede_agregar': False,
-                    'mensaje': 'No tienes una suscripción activa'
-                }
+                print(f"ℹ️ Usuario {user_id} sin suscripción activa, aplicando plan Gratuito por defecto")
+                
+                # Obtener plan gratuito de la base de datos
+                cursor.execute("""
+                    SELECT id, nombre, limite_fuentes, limite_scraping_diario
+                    FROM planes 
+                    WHERE nombre ILIKE '%gratis%' OR precio = 0
+                    ORDER BY precio ASC
+                    LIMIT 1
+                """)
+                plan_gratuito = cursor.fetchone()
+                
+                if plan_gratuito:
+                    suscripcion = {
+                        'plan_nombre': plan_gratuito['nombre'],
+                        'limite_fuentes': plan_gratuito['limite_fuentes']
+                    }
+                    print(f"✅ Aplicando plan '{plan_gratuito['nombre']}' con límite de {plan_gratuito['limite_fuentes']} fuentes")
+                else:
+                    # Fallback: Plan gratuito hardcoded si no existe en BD
+                    suscripcion = {
+                        'plan_nombre': 'Gratis',
+                        'limite_fuentes': 3
+                    }
+                    print(f"⚠️ Plan gratuito no encontrado en BD, usando límite por defecto: 3 fuentes")
             
             limite = suscripcion['limite_fuentes']
+            plan_nombre = suscripcion['plan_nombre']
             
             # Si limite es -1, es ilimitado
             if limite == -1:
@@ -482,7 +530,7 @@ class Database:
                     'puede_agregar': True,
                     'limite': -1,
                     'actuales': 0,
-                    'plan': suscripcion['plan_nombre']
+                    'plan': plan_nombre
                 }
             
             # Contar fuentes actuales del usuario
@@ -495,12 +543,14 @@ class Database:
                 'puede_agregar': puede_agregar,
                 'limite': limite,
                 'actuales': fuentes_actuales,
-                'plan': suscripcion['plan_nombre'],
+                'plan': plan_nombre,
                 'mensaje': f'Tienes {fuentes_actuales} de {limite} fuentes. ' + 
                             ('Puedes agregar más.' if puede_agregar else 'Has alcanzado el límite de tu plan.')
             }
         except Exception as e:
             print(f"❌ Error verificando límite: {e}")
+            import traceback
+            traceback.print_exc()
             return {'puede_agregar': False, 'mensaje': 'Error verificando límite'}
         finally:
             cursor.close()
@@ -1046,17 +1096,6 @@ class Database:
             cursor.close()
             connection.close()
 
-    
-
-
-
-
-
-
-
-
-
-
     # ==================== OPERACIONES DE SCRAPING DIARIO ====================
 
     def obtener_scraping_hoy(self, user_id: int) -> Dict:
@@ -1121,17 +1160,42 @@ class Database:
         if not connection:
             return {'puede_scrapear': False, 'mensaje': 'Error de conexión'}
         
+        cursor = connection.cursor(cursor_factory=RealDictCursor)
+        
         try:
             # Obtener suscripción activa
             suscripcion = self.obtener_suscripcion_activa(user_id)
             
+            # ✅ SI NO HAY SUSCRIPCIÓN ACTIVA, USAR PLAN GRATUITO POR DEFECTO
             if not suscripcion:
-                return {
-                    'puede_scrapear': False,
-                    'mensaje': 'No tienes una suscripción activa'
-                }
+                print(f"ℹ️ Usuario {user_id} sin suscripción activa, aplicando plan Gratuito por defecto")
+                
+                # Obtener plan gratuito de la base de datos
+                cursor.execute("""
+                    SELECT id, nombre, limite_fuentes, limite_scraping_diario
+                    FROM planes 
+                    WHERE nombre ILIKE '%gratis%' OR precio = 0
+                    ORDER BY precio ASC
+                    LIMIT 1
+                """)
+                plan_gratuito = cursor.fetchone()
+                
+                if plan_gratuito:
+                    suscripcion = {
+                        'plan_nombre': plan_gratuito['nombre'],
+                        'limite_scraping_diario': plan_gratuito['limite_scraping_diario']
+                    }
+                    print(f"✅ Aplicando plan '{plan_gratuito['nombre']}' con límite de {plan_gratuito['limite_scraping_diario']} scraping/día")
+                else:
+                    # Fallback: Plan gratuito hardcoded si no existe en BD
+                    suscripcion = {
+                        'plan_nombre': 'Gratis',
+                        'limite_scraping_diario': 30
+                    }
+                    print(f"⚠️ Plan gratuito no encontrado en BD, usando límite por defecto: 30 scraping/día")
             
             limite = suscripcion['limite_scraping_diario']
+            plan_nombre = suscripcion['plan_nombre']
             
             # Si limite es -1, es ilimitado
             if limite == -1:
@@ -1140,29 +1204,37 @@ class Database:
                     'limite': -1,
                     'usado_hoy': 0,
                     'disponible': -1,
-                    'plan': suscripcion['plan_nombre']
+                    'plan': plan_nombre
                 }
             
             # Obtener scraping de hoy
             scraping_hoy = self.obtener_scraping_hoy(user_id)
             usado_hoy = scraping_hoy.get('cantidad', 0)
-            disponible = limite - usado_hoy
+            disponible = max(0, limite - usado_hoy)
             
             puede_scrapear = (usado_hoy + cantidad_a_scrapear) <= limite
+            
+            mensaje = f'Has usado {usado_hoy} de {limite} noticias hoy.'
+            if puede_scrapear:
+                mensaje += f' Disponibles: {disponible}'
+            else:
+                mensaje += ' ¡Límite diario alcanzado! Actualiza tu plan para más scraping.'
             
             return {
                 'puede_scrapear': puede_scrapear,
                 'limite': limite,
                 'usado_hoy': usado_hoy,
                 'disponible': disponible,
-                'plan': suscripcion['plan_nombre'],
-                'mensaje': f'Has usado {usado_hoy} de {limite} noticias hoy. ' + 
-                          (f'Disponibles: {disponible}' if puede_scrapear else '¡Límite alcanzado!')
+                'plan': plan_nombre,
+                'mensaje': mensaje
             }
         except Exception as e:
             print(f"❌ Error verificando límite scraping: {e}")
-            return {'puede_scrapear': False, 'mensaje': 'Error verificando límite'}
+            import traceback
+            traceback.print_exc()
+            return {'puede_scrapear': False, 'mensaje': f'Error verificando límite: {str(e)}'}
         finally:
+            cursor.close()
             connection.close()
 
     def resetear_scraping_antiguo(self) -> bool:

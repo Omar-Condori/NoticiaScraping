@@ -1,31 +1,31 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { noticiasAPI, fuentesAPI, categoriasAPI, scrapingAPI } from '../services/api'; // ← MODIFICADO
+import { noticiasAPI, fuentesAPI, categoriasAPI, scrapingAPI } from '../services/api';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import Skeleton from '../components/ui/Skeleton';
-import { RefreshCw, AlertCircle, Filter, Tag } from 'lucide-react'; // ← AÑADIDO Tag
+import { RefreshCw, AlertCircle, Filter, Tag } from 'lucide-react';
 
 export default function Dashboard() {
   const [noticias, setNoticias] = useState([]);
   const [fuentes, setFuentes] = useState([]);
-  const [categorias, setCategorias] = useState([]); // ← NUEVO
+  const [categorias, setCategorias] = useState([]);
   const [loading, setLoading] = useState(false);
   const [scraping, setScraping] = useState(false);
   const [error, setError] = useState('');
   
   // Filtros
   const [fuenteSeleccionada, setFuenteSeleccionada] = useState('');
-  const [categoriaSeleccionada, setCategoriaSeleccionada] = useState(''); // ← NUEVO
+  const [categoriaSeleccionada, setCategoriaSeleccionada] = useState('');
   const [limite, setLimite] = useState(20);
   
-  // ← NUEVO: Estado para scroll infinito
+  // Estado para scroll infinito
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const observerTarget = useRef(null);
 
-  // ← MODIFICADO: Función para cargar noticias (ahora con scroll infinito)
+  // ✅ FUNCIÓN CORREGIDA: cargarNoticias
   const cargarNoticias = useCallback(async (reset = false) => {
     if (!hasMore && !reset) return;
     
@@ -42,13 +42,26 @@ export default function Dashboard() {
 
     try {
       const currentOffset = reset ? 0 : offset;
-      const fuenteId = fuenteSeleccionada && fuenteSeleccionada !== '' ? parseInt(fuenteSeleccionada, 10) : null;
-      const data = await noticiasAPI.obtener(
-        limite,
-        currentOffset,
-        fuenteId,
-        categoriaSeleccionada || null // ← NUEVO: filtro por categoría
-      );
+      
+      // ✅ CORRECCIÓN: Construir objeto de parámetros
+      const params = {
+        limite: limite,
+        offset: currentOffset
+      };
+
+      // Solo agregar fuente_id si está seleccionada
+      if (fuenteSeleccionada && fuenteSeleccionada !== '') {
+        params.fuente_id = parseInt(fuenteSeleccionada, 10);
+      }
+
+      // Solo agregar categoría si está seleccionada
+      if (categoriaSeleccionada && categoriaSeleccionada !== '') {
+        params.categoria = categoriaSeleccionada;
+      }
+
+      // ✅ Llamar a la API con objeto de parámetros
+      const response = await noticiasAPI.obtener(params);
+      const data = response.data;
       
       // Si hay error de conexión, mostrar mensaje pero no lanzar excepción
       if (data && data.success === false && data.error && data.error.includes('No se pudo conectar')) {
@@ -72,6 +85,7 @@ export default function Dashboard() {
       setHasMore((data.noticias || []).length === limite);
       setOffset(prev => reset ? limite : prev + limite);
     } catch (err) {
+      console.error('Error en cargarNoticias:', err);
       setError(err.message || 'Error al cargar las noticias');
       setNoticias([]);
       setHasMore(false);
@@ -81,7 +95,7 @@ export default function Dashboard() {
     }
   }, [limite, fuenteSeleccionada, categoriaSeleccionada, offset, hasMore]);
 
-  // ← NUEVO: Intersection Observer para scroll infinito
+  // Intersection Observer para scroll infinito
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
@@ -104,36 +118,36 @@ export default function Dashboard() {
     };
   }, [cargarNoticias, loading, loadingMore, hasMore]);
 
-  // Cargar fuentes y categorías al montar
-  // Cargar fuentes y categorías al montar
-useEffect(() => {
-  const cargarDatos = async () => {
-    try {
-      const [fuentesData, categoriasData] = await Promise.all([
-        fuentesAPI.listar(true),
-        categoriasAPI.obtener(),
-      ]);
+  // ✅ CARGAR FUENTES Y CATEGORÍAS - CORREGIDO
+  useEffect(() => {
+    const cargarDatos = async () => {
+      try {
+        const [fuentesResponse, categoriasResponse] = await Promise.all([
+          fuentesAPI.listar(true),
+          categoriasAPI.obtener(),
+        ]);
 
-      if (fuentesData && fuentesData.success !== false) {
-        setFuentes(fuentesData.fuentes || []);
-      } else {
+        // ✅ Acceder a response.data
+        if (fuentesResponse?.data && fuentesResponse.data.success !== false) {
+          setFuentes(fuentesResponse.data.fuentes || []);
+        } else {
+          setFuentes([]);
+        }
+
+        if (categoriasResponse?.data && categoriasResponse.data.success !== false) {
+          setCategorias(categoriasResponse.data.categorias || []);
+        } else {
+          setCategorias([]);
+        }
+      } catch (err) {
+        console.error('Error cargando datos:', err);
         setFuentes([]);
-      }
-
-      if (categoriasData && categoriasData.success !== false) {
-        setCategorias(categoriasData.categorias || []);
-      } else {
         setCategorias([]);
       }
-    } catch (err) {
-      console.error('Error cargando datos:', err);
-      setFuentes([]);
-      setCategorias([]);
-    }
-  };
+    };
 
-  cargarDatos();
-}, []);
+    cargarDatos();
+  }, []);
 
   
   // Cargar noticias iniciales
@@ -141,37 +155,64 @@ useEffect(() => {
     cargarNoticias(true);
   }, []);
 
-  // ← MODIFICADO: Recargar cuando cambien los filtros
+  // Recargar cuando cambien los filtros
   useEffect(() => {
     setOffset(0);
     setHasMore(true);
     cargarNoticias(true);
   }, [fuenteSeleccionada, categoriaSeleccionada, limite]);
 
-  const ejecutarScraping = async () => {
-    setScraping(true);
-    setError('');
 
-    try {
-      const data = await scrapingAPI.ejecutar(
-        5,
-        fuenteSeleccionada || null
-      );
+  // ✅ FUNCIÓN CORREGIDA: ejecutarScraping con mejor manejo de errores
+const ejecutarScraping = async () => {
+  setScraping(true);
+  setError('');
 
-      if (data.success) {
-        // Recargar noticias después del scraping
-        setOffset(0);
-        setHasMore(true);
-        await cargarNoticias(true);
-      } else {
-        throw new Error(data.error || 'Error en el scraping');
-      }
-    } catch (err) {
-      setError(err.message || 'Error al ejecutar el scraping');
-    } finally {
-      setScraping(false);
+  try {
+    // ✅ CORRECCIÓN: Construir objeto de parámetros
+    const params = {
+      limite: 5
+    };
+
+    // Solo agregar fuente si está seleccionada
+    if (fuenteSeleccionada && fuenteSeleccionada !== '') {
+      params.fuente_id = parseInt(fuenteSeleccionada, 10);
     }
-  };
+
+    const response = await scrapingAPI.ejecutar(params);
+    const data = response.data;
+
+    if (data.success) {
+      // Recargar noticias después del scraping
+      setOffset(0);
+      setHasMore(true);
+      await cargarNoticias(true);
+    } else {
+      throw new Error(data.error || 'Error en el scraping');
+    }
+  } catch (err) {
+    console.error('Error en ejecutarScraping:', err);
+    
+    // ✅ MOSTRAR EL MENSAJE DEL BACKEND (incluye mensaje de límite alcanzado)
+    if (err.response?.status === 403) {
+      // Error 403 - Límite alcanzado
+      const backendMessage = err.response?.data?.mensaje || err.response?.data?.error;
+      if (backendMessage) {
+        setError(backendMessage);
+      } else {
+        setError('Has alcanzado el límite de scraping de tu plan. Actualiza tu plan para continuar.');
+      }
+    } else if (err.response?.data?.mensaje) {
+      setError(err.response.data.mensaje);
+    } else if (err.response?.data?.error) {
+      setError(err.response.data.error);
+    } else {
+      setError(err.message || 'Error al ejecutar el scraping');
+    }
+  } finally {
+    setScraping(false);
+  }
+};
 
   return (
     <div className="space-y-6">
@@ -221,7 +262,7 @@ useEffect(() => {
             </select>
           </div>
 
-          {/* ← NUEVO: Selector de Categoría */}
+          {/* Selector de Categoría */}
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-2">
               <div className="flex items-center gap-2">
@@ -294,7 +335,7 @@ useEffect(() => {
             ))}
           </div>
 
-          {/* ← NUEVO: Elemento observador para scroll infinito */}
+          {/* Elemento observador para scroll infinito */}
           <div ref={observerTarget} className="flex justify-center py-8">
             {loadingMore && (
               <div className="flex items-center gap-2 text-gray-400">
