@@ -6,10 +6,32 @@ import Input from '../components/ui/Input';
 import Skeleton from '../components/ui/Skeleton';
 import { RefreshCw, AlertCircle, Filter, Tag } from 'lucide-react';
 
+// ✅ CATEGORÍAS PREDEFINIDAS (IGUAL QUE EN NOTICIAS.JSX)
+const CATEGORIAS_PREDEFINIDAS = [
+  'Política',
+  'Economía',
+  'Salud',
+  'Deportes',
+  'Tecnología',
+  'Ciencia',
+  'Cultura',
+  'Educación',
+  'Sociedad',
+  'Internacionales',
+  'Mundo',
+  'Entretenimiento',
+  'Espectáculos',
+  'Agricultura',
+  'Energía',
+  'Ciberseguridad',
+  'Finanzas',
+  'Clima'
+];
+
 export default function Dashboard() {
   const [noticias, setNoticias] = useState([]);
   const [fuentes, setFuentes] = useState([]);
-  const [categorias, setCategorias] = useState([]);
+  const [categorias, setCategorias] = useState(CATEGORIAS_PREDEFINIDAS); // ✅ INICIALIZAR CON PREDEFINIDAS
   const [loading, setLoading] = useState(false);
   const [scraping, setScraping] = useState(false);
   const [error, setError] = useState('');
@@ -118,7 +140,7 @@ export default function Dashboard() {
     };
   }, [cargarNoticias, loading, loadingMore, hasMore]);
 
-  // ✅ CARGAR FUENTES Y CATEGORÍAS - CORREGIDO
+  // ✅ CARGAR FUENTES Y CATEGORÍAS - MEJORADO
   useEffect(() => {
     const cargarDatos = async () => {
       try {
@@ -134,15 +156,22 @@ export default function Dashboard() {
           setFuentes([]);
         }
 
+        // ✅ COMBINAR CATEGORÍAS PREDEFINIDAS + BD (sin duplicados)
         if (categoriasResponse?.data && categoriasResponse.data.success !== false) {
-          setCategorias(categoriasResponse.data.categorias || []);
+          const categoriasDB = categoriasResponse.data.categorias || [];
+          // Combinar y eliminar duplicados
+          const todasCategorias = [...new Set([...CATEGORIAS_PREDEFINIDAS, ...categoriasDB])];
+          // Ordenar alfabéticamente
+          setCategorias(todasCategorias.sort());
         } else {
-          setCategorias([]);
+          // Si falla, usar solo las predefinidas
+          setCategorias(CATEGORIAS_PREDEFINIDAS);
         }
       } catch (err) {
         console.error('Error cargando datos:', err);
         setFuentes([]);
-        setCategorias([]);
+        // En caso de error, mantener las categorías predefinidas
+        setCategorias(CATEGORIAS_PREDEFINIDAS);
       }
     };
 
@@ -164,55 +193,55 @@ export default function Dashboard() {
 
 
   // ✅ FUNCIÓN CORREGIDA: ejecutarScraping con mejor manejo de errores
-const ejecutarScraping = async () => {
-  setScraping(true);
-  setError('');
+  const ejecutarScraping = async () => {
+    setScraping(true);
+    setError('');
 
-  try {
-    // ✅ CORRECCIÓN: Construir objeto de parámetros
-    const params = {
-      limite: 5
-    };
+    try {
+      // ✅ CORRECCIÓN: Construir objeto de parámetros
+      const params = {
+        limite: 5
+      };
 
-    // Solo agregar fuente si está seleccionada
-    if (fuenteSeleccionada && fuenteSeleccionada !== '') {
-      params.fuente_id = parseInt(fuenteSeleccionada, 10);
-    }
-
-    const response = await scrapingAPI.ejecutar(params);
-    const data = response.data;
-
-    if (data.success) {
-      // Recargar noticias después del scraping
-      setOffset(0);
-      setHasMore(true);
-      await cargarNoticias(true);
-    } else {
-      throw new Error(data.error || 'Error en el scraping');
-    }
-  } catch (err) {
-    console.error('Error en ejecutarScraping:', err);
-    
-    // ✅ MOSTRAR EL MENSAJE DEL BACKEND (incluye mensaje de límite alcanzado)
-    if (err.response?.status === 403) {
-      // Error 403 - Límite alcanzado
-      const backendMessage = err.response?.data?.mensaje || err.response?.data?.error;
-      if (backendMessage) {
-        setError(backendMessage);
-      } else {
-        setError('Has alcanzado el límite de scraping de tu plan. Actualiza tu plan para continuar.');
+      // Solo agregar fuente si está seleccionada
+      if (fuenteSeleccionada && fuenteSeleccionada !== '') {
+        params.fuente_id = parseInt(fuenteSeleccionada, 10);
       }
-    } else if (err.response?.data?.mensaje) {
-      setError(err.response.data.mensaje);
-    } else if (err.response?.data?.error) {
-      setError(err.response.data.error);
-    } else {
-      setError(err.message || 'Error al ejecutar el scraping');
+
+      const response = await scrapingAPI.ejecutar(params);
+      const data = response.data;
+
+      if (data.success) {
+        // Recargar noticias después del scraping
+        setOffset(0);
+        setHasMore(true);
+        await cargarNoticias(true);
+      } else {
+        throw new Error(data.error || 'Error en el scraping');
+      }
+    } catch (err) {
+      console.error('Error en ejecutarScraping:', err);
+      
+      // ✅ MOSTRAR EL MENSAJE DEL BACKEND (incluye mensaje de límite alcanzado)
+      if (err.response?.status === 403) {
+        // Error 403 - Límite alcanzado
+        const backendMessage = err.response?.data?.mensaje || err.response?.data?.error;
+        if (backendMessage) {
+          setError(backendMessage);
+        } else {
+          setError('Has alcanzado el límite de scraping de tu plan. Actualiza tu plan para continuar.');
+        }
+      } else if (err.response?.data?.mensaje) {
+        setError(err.response.data.mensaje);
+      } else if (err.response?.data?.error) {
+        setError(err.response.data.error);
+      } else {
+        setError(err.message || 'Error al ejecutar el scraping');
+      }
+    } finally {
+      setScraping(false);
     }
-  } finally {
-    setScraping(false);
-  }
-};
+  };
 
   return (
     <div className="space-y-6">

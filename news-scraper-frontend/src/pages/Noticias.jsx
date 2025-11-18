@@ -6,10 +6,32 @@ import Skeleton from '../components/ui/Skeleton';
 import { AlertCircle, Filter, Tag, Download, ChevronLeft, ChevronRight } from 'lucide-react';
 import Button from '../components/ui/Button';
 
+// ✅ CATEGORÍAS PREDEFINIDAS (NUEVO)
+const CATEGORIAS_PREDEFINIDAS = [
+  'Política',
+  'Economía',
+  'Salud',
+  'Deportes',
+  'Tecnología',
+  'Ciencia',
+  'Cultura',
+  'Educación',
+  'Sociedad',
+  'Internacionales',
+  'Mundo',
+  'Entretenimiento',
+  'Espectáculos',
+  'Agricultura',
+  'Energía',
+  'Ciberseguridad',
+  'Finanzas',
+  'Clima'
+];
+
 export default function Noticias() {
   const [noticias, setNoticias] = useState([]);
   const [fuentes, setFuentes] = useState([]);
-  const [categorias, setCategorias] = useState([]);
+  const [categorias, setCategorias] = useState(CATEGORIAS_PREDEFINIDAS); // ✅ INICIALIZAR CON PREDEFINIDAS
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   
@@ -81,7 +103,7 @@ export default function Noticias() {
     }
   };
 
-  // ✅ CARGAR FUENTES Y CATEGORÍAS - CORREGIDO
+  // ✅ CARGAR FUENTES Y CATEGORÍAS - MEJORADO
   useEffect(() => {
     const cargarDatos = async () => {
       try {
@@ -97,15 +119,22 @@ export default function Noticias() {
           setFuentes([]);
         }
 
+        // ✅ COMBINAR CATEGORÍAS PREDEFINIDAS + BD (sin duplicados)
         if (categoriasResponse?.data && categoriasResponse.data.success !== false) {
-          setCategorias(categoriasResponse.data.categorias || []);
+          const categoriasDB = categoriasResponse.data.categorias || [];
+          // Combinar y eliminar duplicados
+          const todasCategorias = [...new Set([...CATEGORIAS_PREDEFINIDAS, ...categoriasDB])];
+          // Ordenar alfabéticamente
+          setCategorias(todasCategorias.sort());
         } else {
-          setCategorias([]);
+          // Si falla, usar solo las predefinidas
+          setCategorias(CATEGORIAS_PREDEFINIDAS);
         }
       } catch (err) {
         console.error('Error cargando datos:', err);
         setFuentes([]);
-        setCategorias([]);
+        // En caso de error, mantener las categorías predefinidas
+        setCategorias(CATEGORIAS_PREDEFINIDAS);
       }
     };
 

@@ -32,8 +32,8 @@ class NewsScraper:
                 'selector_titulo': {'name': 'h2'},
                 'selector_resumen': {'name': 'p'},
                 'selector_link': {'name': 'a'},
-                'selector_imagen': {'name': 'img'},  # <--- ¡NUEVO!
-                'selector_categoria': {'name': 'span', 'attrs': {'class': 'category'}},  # <--- ¡NUEVO!
+                'selector_imagen': {'name': 'img'},
+                'selector_categoria': {'name': 'span', 'attrs': {'class': 'category'}},
                 'activo': True
             },
             {
@@ -43,8 +43,8 @@ class NewsScraper:
                 'selector_titulo': {'name': 'span', 'attrs': {'class': 'container__headline-text'}},
                 'selector_resumen': {'name': 'div', 'attrs': {'class': 'container__description'}},
                 'selector_link': {'name': 'a'},
-                'selector_imagen': {'name': 'img'},  # <--- ¡NUEVO!
-                'selector_categoria': None,  # <--- ¡NUEVO! CNN puede no tener categoría visible
+                'selector_imagen': {'name': 'img'},
+                'selector_categoria': None,
                 'activo': True
             }
         ]
@@ -581,8 +581,10 @@ class NewsScraper:
                                     # Mantener la URL con parámetros si no tiene extensión clara
                                     pass
                     
-                    # <--- ¡NUEVO! Extraer categoría
+                    # <--- ¡MEJORADO! Extraer categoría con múltiples estrategias Y VALIDACIÓN ESTRICTA
                     categoria = None
+
+                    # Estrategia 1: Usar selector específico si existe
                     if fuente.get('selector_categoria'):
                         categoria_selector = fuente['selector_categoria']
                         categoria_tag = articulo.find(
@@ -591,6 +593,161 @@ class NewsScraper:
                         )
                         if categoria_tag:
                             categoria = categoria_tag.get_text(strip=True)
+
+                    # Estrategia 2: Buscar en elementos con clases/atributos comunes de categoría
+                    if not categoria or len(categoria) < 2:
+                        categorias_comunes = [
+                            'category', 'categoria', 'section', 'seccion', 'topic', 'tema', 
+                            'tag', 'label', 'etiqueta', 'badge', 'pill', 'kicker'
+                        ]
+                        
+                        for class_pattern in categorias_comunes:
+                            # Buscar por clase
+                            cat_elem = articulo.find(attrs={'class': lambda x: x and class_pattern in str(x).lower()})
+                            if cat_elem:
+                                cat_text = cat_elem.get_text(strip=True)
+                                # Validar que sea una categoría válida (corta, sin caracteres extraños)
+                                if cat_text and 2 < len(cat_text) < 50 and not any(char in cat_text for char in ['http', '@', '.com']):
+                                    categoria = cat_text
+                                    break
+                            
+                            # Buscar por data-attribute
+                            if not categoria:
+                                for attr in ['data-category', 'data-section', 'data-topic', 'data-tag']:
+                                    cat_elem = articulo.find(attrs={attr: True})
+                                    if cat_elem:
+                                        cat_text = cat_elem.get(attr, '').strip()
+                                        if cat_text and 2 < len(cat_text) < 50:
+                                            categoria = cat_text
+                                            break
+
+                    # Estrategia 3: Buscar en links con clases de categoría
+                    if not categoria or len(categoria) < 2:
+                        cat_link = articulo.find('a', attrs={'class': lambda x: x and any(
+                            cat in str(x).lower() for cat in ['category', 'section', 'topic', 'tag']
+                        )})
+                        if cat_link:
+                            cat_text = cat_link.get_text(strip=True)
+                            if cat_text and 2 < len(cat_text) < 50:
+                                categoria = cat_text
+
+                    # Estrategia 4: Buscar en elementos span con texto corto (común en badges)
+                    if not categoria or len(categoria) < 2:
+                        spans = articulo.find_all('span', limit=10)
+                        for span in spans:
+                            span_text = span.get_text(strip=True)
+                            # Si es corto, en mayúsculas/capitalizado, y está al inicio, probablemente es categoría
+                            if span_text and 3 <= len(span_text) <= 30:
+                                # Verificar que no sea fecha, hora, o número
+                                if not re.match(r'^\d+', span_text) and not any(word in span_text.lower() for word in ['ago', 'min', 'hour', 'day', 'hace', 'hora']):
+                                    # Si tiene todas las palabras capitalizadas, probablemente es categoría
+                                    palabras = span_text.split()
+                                    if palabras and all(p[0].isupper() if p else False for p in palabras):
+                                        categoria = span_text
+                                        break
+
+                    # Estrategia 5: Inferir desde la URL (último recurso)
+                    if not categoria or len(categoria) < 2:
+                        if url and url != fuente['url']:
+                            # Parsear la URL para extraer sección
+                            parsed_url = urlparse(url)
+                            path_parts = [p for p in parsed_url.path.split('/') if p]
+                            
+                            # Buscar secciones comunes en la URL
+                            secciones_conocidas = [
+                                'deportes', 'sports', 'tecnologia', 'technology', 'tech',
+                                'politica', 'politics', 'economia', 'economy', 'business',
+                                'salud', 'health', 'ciencia', 'science', 'cultura', 'culture',
+                                'entretenimiento', 'entertainment', 'mundo', 'world', 'internacional',
+                                'nacional', 'local', 'educacion', 'education', 'finanzas', 'finance'
+                            ]
+                            
+                            for part in path_parts[:3]:  # Solo revisar las primeras 3 partes
+                                part_lower = part.lower()
+                                if part_lower in secciones_conocidas:
+                                    # Capitalizar primera letra
+                                    categoria = part.capitalize()
+                                    break
+
+                    # ✅ VALIDACIÓN Y NORMALIZACIÓN ESTRICTA DE CATEGORÍA
+                    if categoria:
+                        # Eliminar caracteres especiales al inicio/final
+                        categoria = categoria.strip('|•·- »«›‹')
+                        
+                        # ✅ FILTRAR HORAS (10:16 h, 10:19 h, etc.)
+                        if re.search(r'\d+:\d+\s*h', categoria, re.IGNORECASE):
+                            categoria = None
+                        
+                        # ✅ FILTRAR SI ES SOLO NÚMEROS O NÚMEROS CON DOS PUNTOS
+                        elif re.match(r'^[\d\s:]+$', categoria):
+                            categoria = None
+                        
+                        # ✅ FILTRAR SI CONTIENE P.M. O A.M.
+                        elif re.search(r'(p\.m\.|a\.m\.)', categoria, re.IGNORECASE):
+                            categoria = None
+                        
+                        # ✅ FILTRAR PALABRAS PROHIBIDAS COMUNES
+                        elif categoria:
+                            palabras_prohibidas = [
+                                'getty', 'live', 'actualidad', 'último', 'últimas', 'hoy',
+                                'ayer', 'ahora', 'breaking', 'destacado', 'principal',
+                                'ver más', 'leer más', 'continuar', 'siguiente', 'desde las',
+                                'lo último', 'premios', 'playoff', 'basketball', 'football'
+                            ]
+                            if any(palabra in categoria.lower() for palabra in palabras_prohibidas):
+                                categoria = None
+                        
+                        # ✅ FILTRAR LUGARES GEOGRÁFICOS COMUNES
+                        if categoria:
+                            lugares_prohibidos = [
+                                'lima', 'méxico', 'perú', 'argentina', 'colombia', 'chile',
+                                'estados unidos', 'eeuu', 'usa', 'la libertad', 'arequipa',
+                                'cusco', 'piura', 'trujillo'
+                            ]
+                            if categoria.lower() in lugares_prohibidos:
+                                categoria = None
+                        
+                        # ✅ FILTRAR SI TIENE SÍMBOLOS EXTRAÑOS
+                        if categoria and any(char in categoria for char in ['»', '«', '›', '‹', '...', '::']):
+                            categoria = None
+                        
+                        # Capitalizar correctamente
+                        if categoria and categoria.isupper():
+                            categoria = categoria.title()
+                        
+                        # Limitar longitud
+                        if categoria and (len(categoria) < 3 or len(categoria) > 30):
+                            categoria = None
+                        
+                        # ✅ NORMALIZAR CATEGORÍAS SIMILARES
+                        if categoria:
+                            categoria_lower = categoria.lower()
+                            
+                            # Mapeo de categorías similares
+                            mapeo_categorias = {
+                                'tecnologia': 'Tecnología',
+                                'politica': 'Política',
+                                'economia': 'Economía',
+                                'espectaculos': 'Espectáculos',
+                                'internacional': 'Internacionales',
+                                'policiales': 'Sociedad',
+                                'gobierno': 'Política',
+                                'ncaa': 'Deportes',
+                                'college': 'Deportes',
+                                'soccer': 'Deportes',
+                                'fútbol': 'Deportes',
+                                'futbol': 'Deportes'
+                            }
+                            
+                            # Buscar si hay mapeo exacto
+                            if categoria_lower in mapeo_categorias:
+                                categoria = mapeo_categorias[categoria_lower]
+                            # Buscar si contiene alguna palabra clave
+                            else:
+                                for key, value in mapeo_categorias.items():
+                                    if key in categoria_lower:
+                                        categoria = value
+                                        break
                     
                     # <--- ¡MEJORADO! Siempre intentar scraping profundo si faltan datos críticos
                     fecha_publicacion = None
@@ -725,7 +882,6 @@ class NewsScraper:
     
     # ==================== GESTIÓN DE NOTICIAS ====================
     
-    # <--- ¡MODIFICACIÓN! Agregar parámetros offset y categoria
     def obtener_noticias_guardadas(
         self, 
         limite: int = 50, 
@@ -746,7 +902,6 @@ class NewsScraper:
         """Elimina noticias de la BD (del usuario o todas si es admin)"""
         return self.db.limpiar_noticias(user_id, es_admin)
     
-    # <--- ¡NUEVO MÉTODO! Para obtener categorías
     def obtener_categorias(self, user_id: Optional[int] = None, es_admin: bool = False) -> List[str]:
         """Obtiene todas las categorías únicas (filtrado por usuario si no es admin)"""
         return self.db.obtener_categorias(user_id, es_admin)
