@@ -16,7 +16,14 @@ from datetime import timedelta
 
 # Inicializar Flask
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={
+    r"/api/*": {
+        "origins": ["http://localhost:5173", "http://localhost:3000"],
+        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization"],
+        "supports_credentials": True
+    }
+})
 
 # Configuración JWT
 app.config['JWT_SECRET_KEY'] = 'tu-super-secreto-cambiar-en-produccion-2025'
@@ -910,26 +917,65 @@ def reanudar_tarea_programada(nombre):
 # ==================== ENDPOINTS DE ESTADÍSTICAS ====================
 
 @app.route('/api/v1/estadisticas', methods=['GET'])
+@jwt_required(optional=True)
 def obtener_estadisticas():
-    """📊 Estadísticas generales del sistema (PÚBLICO)"""
+    """📊 Estadísticas generales (filtradas por usuario si no es admin)"""
     try:
-        stats = estadisticas_module.obtener_estadisticas_generales()
+        usuario_id = None
+        es_admin = False
+        
+        try:
+            usuario_id = get_jwt_identity()
+            from flask_jwt_extended import get_jwt
+            claims = get_jwt()
+            rol = claims.get('rol', 'usuario')
+            es_admin = (rol == 'admin')
+            
+            print(f"🔐 Usuario ID: {usuario_id}")
+            print(f"👤 Rol: {rol}")
+            print(f"🛡️ Es admin: {es_admin}")
+        except Exception as e:
+            print(f"⚠️ Error obteniendo JWT: {e}")
+        
+        print(f"📊 Llamando estadisticas con user_id={usuario_id}, es_admin={es_admin}")
+        
+        stats = estadisticas_module.obtener_estadisticas_generales(usuario_id, es_admin)
+        
+        print(f"📈 Stats obtenidas: {stats.get('resumen', {}).get('total_noticias', 0)} noticias")
+        
         return jsonify({
             'success': True,
             'estadisticas': stats
         }), 200
     except Exception as e:
+        print(f"❌ Error en estadisticas: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({
             'error': 'Error obteniendo estadísticas',
             'detalle': str(e)
         }), 500
 
 @app.route('/api/v1/estadisticas/tendencias', methods=['GET'])
+@jwt_required(optional=True)
 def obtener_tendencias():
-    """📈 Tendencias de scraping por día"""
+    """📈 Tendencias de scraping por día (filtradas por usuario si no es admin)"""
     try:
         dias = request.args.get('dias', default=7, type=int)
-        tendencias = estadisticas_module.obtener_tendencias(dias)
+        
+        usuario_id = None
+        es_admin = False
+        
+        try:
+            usuario_id = get_jwt_identity()
+            from flask_jwt_extended import get_jwt
+            claims = get_jwt()
+            rol = claims.get('rol', 'usuario')
+            es_admin = (rol == 'admin')
+        except:
+            pass
+        
+        tendencias = estadisticas_module.obtener_tendencias(dias, usuario_id, es_admin)
         return jsonify({
             'success': True,
             'tendencias': tendencias
@@ -941,11 +987,25 @@ def obtener_tendencias():
         }), 500
 
 @app.route('/api/v1/estadisticas/top-fuentes', methods=['GET'])
+@jwt_required(optional=True)
 def obtener_top_fuentes_endpoint():
-    """🏆 Top fuentes con más noticias"""
+    """🏆 Top fuentes con más noticias (filtradas por usuario si no es admin)"""
     try:
         limite = request.args.get('limite', default=5, type=int)
-        top_fuentes = estadisticas_module.obtener_top_fuentes(limite)
+        
+        usuario_id = None
+        es_admin = False
+        
+        try:
+            usuario_id = get_jwt_identity()
+            from flask_jwt_extended import get_jwt
+            claims = get_jwt()
+            rol = claims.get('rol', 'usuario')
+            es_admin = (rol == 'admin')
+        except:
+            pass
+        
+        top_fuentes = estadisticas_module.obtener_top_fuentes(limite, usuario_id, es_admin)
         return jsonify({
             'success': True,
             'top_fuentes': top_fuentes

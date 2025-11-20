@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
-import { noticiasAPI } from '../services/api';
+import { useState } from 'react';
 import toast from 'react-hot-toast';
+
+const API_URL = 'http://localhost:8001/api/v1';
 
 export const useNoticias = (params = {}) => {
   const [noticias, setNoticias] = useState([]);
@@ -8,36 +9,11 @@ export const useNoticias = (params = {}) => {
   const [error, setError] = useState(null);
   const [total, setTotal] = useState(0);
 
-  const cargarNoticias = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    
-    try {
-      const response = await noticiasService.obtener(params);
-      setNoticias(response.noticias || []);
-      setTotal(response.total || 0);
-    } catch (err) {
-      setError(err.message);
-      toast.error(`Error al cargar noticias: ${err.message}`);
-    } finally {
-      setLoading(false);
-    }
-  }, [JSON.stringify(params)]);
-
-  useEffect(() => {
-    cargarNoticias();
-  }, [cargarNoticias]);
-
-  const recargar = () => {
-    cargarNoticias();
-  };
-
   return {
     noticias,
     loading,
     error,
-    total,
-    recargar
+    total
   };
 };
 
@@ -51,20 +27,40 @@ export const useBusqueda = () => {
     setError(null);
     
     try {
-      const response = await noticiasAPI.buscar(
-        params.q,
-        params.fuente_id,
-        params.fecha_desde,
-        params.fecha_hasta,
-        params.limite
-      );
-      if (response.success) {
-        setResultados(response.resultados || []);
-        return response;
+      const queryParams = new URLSearchParams();
+      
+      if (params.q) queryParams.append('q', params.q);
+      if (params.fuente_id) queryParams.append('fuente_id', params.fuente_id);
+      if (params.fecha_desde) queryParams.append('fecha_desde', params.fecha_desde);
+      if (params.fecha_hasta) queryParams.append('fecha_hasta', params.fecha_hasta);
+      if (params.limite) queryParams.append('limite', params.limite);
+      if (params.orden) queryParams.append('orden', params.orden);
+
+      const url = `${API_URL}/noticias/buscar?${queryParams.toString()}`;
+      
+      console.log('🔍 URL de búsqueda:', url);
+      
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+
+      const data = await response.json();
+      
+      console.log('📊 Respuesta del backend:', data);
+      
+      if (data.success) {
+        setResultados(data.resultados || []);
+        toast.success(`Se encontraron ${data.resultados?.length || 0} resultados`);
+        return data;
       } else {
-        throw new Error(response.error || 'Error en búsqueda');
+        throw new Error(data.error || 'Error en búsqueda');
       }
     } catch (err) {
+      console.error('❌ Error en búsqueda:', err);
       setError(err.message);
       toast.error(`Error en búsqueda: ${err.message}`);
       setResultados([]);
@@ -79,19 +75,26 @@ export const useBusqueda = () => {
     setError(null);
     
     try {
-      const response = await fetch('http://localhost:8001/api/v1/noticias/buscar/palabras-clave', {
+      const response = await fetch(`${API_URL}/noticias/buscar/palabras-clave`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
         body: JSON.stringify({ palabras, limite })
       });
+      
       const data = await response.json();
+      
       if (data.success) {
         setResultados(data.resultados || []);
+        toast.success(`Se encontraron ${data.resultados?.length || 0} resultados`);
         return data;
       } else {
         throw new Error(data.error || 'Error en búsqueda');
       }
     } catch (err) {
+      console.error('❌ Error en búsqueda por palabras:', err);
       setError(err.message);
       toast.error(`Error en búsqueda: ${err.message}`);
       setResultados([]);
@@ -123,12 +126,23 @@ export const useExportacion = () => {
     setLoading(true);
     
     try {
-      const blob = await noticiasService.exportar({
+      const queryParams = new URLSearchParams({
         formato,
         ...params
       });
-      
-      // Crear URL y descargar
+
+      const response = await fetch(`${API_URL}/noticias/exportar?${queryParams.toString()}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Error al exportar');
+      }
+
+      const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;

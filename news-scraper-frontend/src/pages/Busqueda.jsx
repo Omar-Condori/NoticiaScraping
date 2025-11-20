@@ -19,9 +19,8 @@ export default function Busqueda() {
   const [fechaHasta, setFechaHasta] = useState('');
   const [limite, setLimite] = useState(50);
   const [palabrasClave, setPalabrasClave] = useState('');
-  const [tipoBusqueda, setTipoBusqueda] = useState('simple'); // simple | palabras
+  const [tipoBusqueda, setTipoBusqueda] = useState('simple');
 
-  // Cargar fuentes activas
   useEffect(() => {
     const cargarFuentes = async () => {
       try {
@@ -58,6 +57,7 @@ export default function Busqueda() {
         orden: 'DESC'
       };
       
+      console.log('📅 Parámetros enviados:', params);
       await buscar(params);
     }
   };
@@ -73,20 +73,17 @@ export default function Busqueda() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div>
         <h1 className="text-3xl font-bold text-white mb-2">Búsqueda Avanzada</h1>
         <p className="text-gray-400">Busca noticias con filtros personalizados</p>
       </div>
 
-      {/* Formulario de Búsqueda */}
       <Card>
         <CardHeader>
           <CardTitle>Filtros de Búsqueda</CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleBuscar} className="space-y-4">
-            {/* Tipo de Búsqueda */}
             <div className="flex gap-2">
               <Button
                 type="button"
@@ -110,7 +107,6 @@ export default function Busqueda() {
 
             {tipoBusqueda === 'simple' ? (
               <>
-                {/* Búsqueda Simple */}
                 <Input
                   label="Buscar en título y resumen"
                   value={query}
@@ -163,7 +159,6 @@ export default function Busqueda() {
               </>
             ) : (
               <>
-                {/* Búsqueda por Palabras Clave */}
                 <Input
                   label="Palabras clave (separadas por comas)"
                   value={palabrasClave}
@@ -214,7 +209,6 @@ export default function Busqueda() {
         </CardContent>
       </Card>
 
-      {/* Resultados */}
       {resultados.length > 0 && (
         <Card>
           <CardHeader>
@@ -229,10 +223,7 @@ export default function Busqueda() {
           <CardContent>
             <div className="space-y-4">
               {resultados.map((noticia) => (
-                <div
-                  key={noticia.id}
-                  className="p-4 bg-dark-hover rounded-lg border border-dark-border hover:border-accent-primary/50 transition-colors"
-                >
+                <div key={noticia.id} className="p-4 bg-dark-hover rounded-lg border border-dark-border hover:border-accent-primary/50 transition-colors">
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1 min-w-0">
                       <div className="flex flex-wrap items-center gap-2 mb-2">
@@ -248,12 +239,7 @@ export default function Busqueda() {
                         {noticia.resumen}
                       </p>
                     </div>
-                    <a
-                      href={noticia.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex-shrink-0 p-2 hover:bg-dark-card rounded-lg transition-colors"
-                    >
+                    <a href={noticia.url} target="_blank" rel="noopener noreferrer" className="flex-shrink-0 p-2 hover:bg-dark-card rounded-lg transition-colors">
                       <ExternalLink className="w-5 h-5 text-gray-400 hover:text-accent-primary" />
                     </a>
                   </div>
@@ -264,30 +250,24 @@ export default function Busqueda() {
         </Card>
       )}
 
-      {/* Estado Vacío */}
       {!loading && resultados.length === 0 && (query || palabrasClave) && (
         <Card>
           <CardContent className="text-center py-12">
             <Search className="w-12 h-12 text-gray-600 mx-auto mb-4" />
-            <p className="text-gray-400">
-              No se encontraron resultados para tu búsqueda
-            </p>
+            <p className="text-gray-400">No se encontraron resultados para tu búsqueda</p>
           </CardContent>
         </Card>
       )}
 
-      {/* Estado Inicial */}
       {!loading && resultados.length === 0 && !query && !palabrasClave && (
         <Card>
           <CardContent className="text-center py-12">
             <Search className="w-12 h-12 text-gray-600 mx-auto mb-4" />
             <p className="text-gray-400 mb-2">Utiliza los filtros para buscar noticias</p>
-            <p className="text-sm text-gray-500">
-              Puedes buscar por texto, filtrar por fuente o rango de fechas
-            </p>
+            <p className="text-sm text-gray-500">Puedes buscar por texto, filtrar por fuente o rango de fechas</p>
           </CardContent>
         </Card>
       )}
     </div>
   );
-};
+}

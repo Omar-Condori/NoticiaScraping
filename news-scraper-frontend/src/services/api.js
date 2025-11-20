@@ -119,22 +119,25 @@ export const scrapingAPI = {
 // ==================== ESTADÍSTICAS API ====================
 export const estadisticasAPI = {
   generales: () => {
-    return axios.get(`${API_URL}/estadisticas`);
-  },
-  
-  tendencias: (dias = 7) => {
-    return axios.get(`${API_URL}/estadisticas/tendencias`, {
-      params: { dias }
+    return axios.get(`${API_URL}/estadisticas`, {
+      headers: getAuthHeaders()
     });
   },
   
-  topFuentes: (limite = 5) => {
+  tendencias: (params) => {
+    return axios.get(`${API_URL}/estadisticas/tendencias`, {
+      params,
+      headers: getAuthHeaders()
+    });
+  },
+  
+  topFuentes: (params) => {
     return axios.get(`${API_URL}/estadisticas/top-fuentes`, {
-      params: { limite }
+      params,
+      headers: getAuthHeaders()
     });
   }
 };
-
 // ==================== SCHEDULER API ====================
 export const schedulerAPI = {
   listarTareas: () => {
