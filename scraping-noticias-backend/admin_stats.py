@@ -247,13 +247,13 @@ class AdminStats:
                     pg.estado,
                     pg.fecha_pago,
                     pg.referencia_pago,
-                    u.nombre_usuario,
+                    u.nombre_usuario as usuario,
                     u.email,
                     p.nombre as plan
                 FROM pagos pg
                 JOIN usuarios u ON pg.user_id = u.id
                 JOIN planes p ON pg.plan_id = p.id
-                WHERE pg.estado = 'pendiente'
+                WHERE pg.estado IN ('pendiente', 'pendiente_verificacion')
                 ORDER BY pg.fecha_pago DESC
             """)
             

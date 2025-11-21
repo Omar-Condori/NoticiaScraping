@@ -4,13 +4,14 @@ import StatsCard from '../components/admin/StatsCard';
 import UserTable from '../components/admin/UserTable';
 import PaymentTable from '../components/admin/PaymentTable';
 import RevenueChart from '../components/admin/RevenueChart';
+import { Search } from 'lucide-react';
 import api from '../services/api';
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  
+
   // ✅ Inicializar con valores por defecto para evitar undefined
   const [resumen, setResumen] = useState({
     usuarios: { total: 0, activos: 0, semana: 0 },
@@ -18,12 +19,14 @@ const AdminDashboard = () => {
     suscripciones: { activas: 0 },
     pagos: { pendientes: 0 }
   });
-  
+
   const [distribucion, setDistribucion] = useState([]);
   const [ingresos, setIngresos] = useState([]);
   const [usuarios, setUsuarios] = useState([]);
   const [pagosRecientes, setPagosRecientes] = useState([]);
   const [pagosPendientes, setPagosPendientes] = useState([]);
+  const [fuentes, setFuentes] = useState([]);
+  const [busquedaFuente, setBusquedaFuente] = useState('');
   const [vistaActual, setVistaActual] = useState('general');
 
   useEffect(() => {
@@ -49,31 +52,34 @@ const AdminDashboard = () => {
         ingresosRes,
         usuariosRes,
         pagosRecientesRes,
-        pagosPendientesRes
+        pagosPendientesRes,
+        fuentesRes
       ] = await Promise.all([
         api.admin.obtenerResumen(),
         api.admin.obtenerUsuariosPorPlan(),
         api.admin.obtenerIngresosMensuales(),
         api.admin.obtenerUsuariosRecientes(),
         api.admin.obtenerPagosRecientes(),
-        api.admin.obtenerPagosPendientes()
+        api.admin.obtenerPagosPendientes(),
+        api.fuentes.listar()
       ]);
 
       // ✅ Validar que los datos existan antes de setear
       if (resumenRes?.data?.resumen) {
         setResumen(resumenRes.data.resumen);
       }
-      
+
       setDistribucion(distribucionRes?.data?.distribucion || []);
       setIngresos(ingresosRes?.data?.ingresos || []);
       setUsuarios(usuariosRes?.data?.usuarios || []);
       setPagosRecientes(pagosRecientesRes?.data?.pagos || []);
       setPagosPendientes(pagosPendientesRes?.data?.pagos || []);
+      setFuentes(fuentesRes?.data?.fuentes || []);
 
     } catch (error) {
       console.error('Error cargando datos admin:', error);
       setError(error.message || 'Error al cargar datos');
-      
+
       if (error.response?.status === 403) {
         alert('No tienes permisos de administrador');
         navigate('/');
@@ -138,31 +144,28 @@ const AdminDashboard = () => {
         <nav className="flex space-x-8 px-6">
           <button
             onClick={() => setVistaActual('general')}
-            className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
-              vistaActual === 'general'
-                ? 'border-accent-primary text-accent-primary'
-                : 'border-transparent text-gray-400 hover:text-white hover:border-gray-600'
-            }`}
+            className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${vistaActual === 'general'
+              ? 'border-accent-primary text-accent-primary'
+              : 'border-transparent text-gray-400 hover:text-white hover:border-gray-600'
+              }`}
           >
             📊 General
           </button>
           <button
             onClick={() => setVistaActual('usuarios')}
-            className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
-              vistaActual === 'usuarios'
-                ? 'border-accent-primary text-accent-primary'
-                : 'border-transparent text-gray-400 hover:text-white hover:border-gray-600'
-            }`}
+            className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${vistaActual === 'usuarios'
+              ? 'border-accent-primary text-accent-primary'
+              : 'border-transparent text-gray-400 hover:text-white hover:border-gray-600'
+              }`}
           >
             👥 Usuarios
           </button>
           <button
             onClick={() => setVistaActual('pagos')}
-            className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
-              vistaActual === 'pagos'
-                ? 'border-accent-primary text-accent-primary'
-                : 'border-transparent text-gray-400 hover:text-white hover:border-gray-600'
-            }`}
+            className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${vistaActual === 'pagos'
+              ? 'border-accent-primary text-accent-primary'
+              : 'border-transparent text-gray-400 hover:text-white hover:border-gray-600'
+              }`}
           >
             💳 Pagos
             {pagosPendientes.length > 0 && (
@@ -170,6 +173,15 @@ const AdminDashboard = () => {
                 {pagosPendientes.length}
               </span>
             )}
+          </button>
+          <button
+            onClick={() => setVistaActual('fuentes')}
+            className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${vistaActual === 'fuentes'
+              ? 'border-accent-primary text-accent-primary'
+              : 'border-transparent text-gray-400 hover:text-white hover:border-gray-600'
+              }`}
+          >
+            🌐 Fuentes
           </button>
         </nav>
       </div>
@@ -230,11 +242,10 @@ const AdminDashboard = () => {
                       </div>
                       <div className="w-full bg-dark-hover rounded-full h-2">
                         <div
-                          className={`h-2 rounded-full ${
-                            item.plan.includes('Anual') ? 'bg-purple-500' :
+                          className={`h-2 rounded-full ${item.plan.includes('Anual') ? 'bg-purple-500' :
                             item.plan.includes('Mensual') ? 'bg-blue-500' :
-                            'bg-gray-500'
-                          }`}
+                              'bg-gray-500'
+                            }`}
                           style={{
                             width: `${((item.total_usuarios / (resumen?.usuarios?.total || 1)) * 100)}%`
                           }}
@@ -302,8 +313,8 @@ const AdminDashboard = () => {
                   </div>
                 </div>
 
-                <PaymentTable 
-                  pagos={pagosPendientes} 
+                <PaymentTable
+                  pagos={pagosPendientes}
                   onAprobar={aprobarPago}
                 />
               </>
@@ -311,6 +322,104 @@ const AdminDashboard = () => {
 
             {/* Todos los pagos recientes */}
             {pagosRecientes.length > 0 && <PaymentTable pagos={pagosRecientes} />}
+          </div>
+        )}
+
+        {/* Vista Fuentes */}
+        {vistaActual === 'fuentes' && (
+          <div className="space-y-6">
+            <div className="bg-dark-card border border-dark-border rounded-xl p-6">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h3 className="text-xl font-semibold text-white">
+                    🌐 Gestión de Fuentes
+                  </h3>
+                  <p className="text-gray-400 mt-1">
+                    Total de fuentes: {fuentes.filter(f =>
+                      f.nombre.toLowerCase().includes(busquedaFuente.toLowerCase())
+                    ).length} de {fuentes.length}
+                  </p>
+                </div>
+                {/* Buscador */}
+                <div className="relative w-64">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                  <input
+                    type="text"
+                    placeholder="Buscar fuente..."
+                    value={busquedaFuente}
+                    onChange={(e) => setBusquedaFuente(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2 bg-dark-hover border border-dark-border rounded-lg text-white text-sm focus:ring-2 focus:ring-accent-primary focus:border-transparent"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                {fuentes
+                  .filter(f => f.nombre.toLowerCase().includes(busquedaFuente.toLowerCase()))
+                  .map((fuente) => (
+                    <div key={fuente.id} className="bg-dark-hover border border-dark-border rounded-lg p-4">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <h4 className="text-white font-semibold">{fuente.nombre}</h4>
+                          <p className="text-sm text-gray-400 mt-1">{fuente.url}</p>
+                          <div className="flex items-center gap-3 mt-2">
+                            <span className={`text-xs px-2 py-1 rounded ${fuente.activo
+                              ? 'bg-green-500/10 border border-green-500/30 text-green-400'
+                              : 'bg-gray-500/10 border border-gray-500/30 text-gray-400'
+                              }`}>
+                              {fuente.activo ? '✓ Activa' : '✗ Inactiva'}
+                            </span>
+                            {fuente.fecha_creacion && (
+                              <span className="text-xs text-gray-500">
+                                📅 {new Date(fuente.fecha_creacion).toLocaleDateString('es-ES', {
+                                  year: 'numeric',
+                                  month: 'short',
+                                  day: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })}
+                              </span>
+                            )}
+                            {fuente.usuario_email && (
+                              <span className="text-xs text-gray-500">
+                                Usuario: {fuente.usuario_email}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => alert('Función de editar próximamente')}
+                            className="px-3 py-1.5 bg-blue-500/10 border border-blue-500/30 text-blue-400 rounded text-xs hover:bg-blue-500/20 transition-colors"
+                          >
+                            ✏️ Editar
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (window.confirm(`¿Eliminar fuente "${fuente.nombre}"?`)) {
+                                api.fuentes.eliminar(fuente.id)
+                                  .then(() => {
+                                    alert('Fuente eliminada');
+                                    cargarDatos();
+                                  })
+                                  .catch(() => alert('Error al eliminar'));
+                              }
+                            }}
+                            className="px-3 py-1.5 bg-red-500/10 border border-red-500/30 text-red-400 rounded text-xs hover:bg-red-500/20 transition-colors"
+                          >
+                            🗑️ Eliminar
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                {fuentes.filter(f => f.nombre.toLowerCase().includes(busquedaFuente.toLowerCase())).length === 0 && (
+                  <div className="text-center py-12">
+                    <p className="text-gray-500">No se encontraron fuentes</p>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         )}
       </div>

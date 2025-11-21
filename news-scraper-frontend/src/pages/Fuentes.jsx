@@ -33,13 +33,13 @@ export default function Fuentes() {
       // ✅ CORRECCIÓN: Acceder a response.data
       const response = await fuentesAPI.listar();
       const data = response.data;
-      
+
       if (data && data.success === false && data.error && data.error.includes('No se pudo conectar')) {
         setError(data.error);
         setFuentes([]);
         return;
       }
-      
+
       if (data && (data.success !== false)) {
         setFuentes(data.fuentes || []);
       } else {
@@ -85,7 +85,7 @@ export default function Fuentes() {
         nombre: formData.nombre,
         url: formData.url
       });
-      
+
       const data = response.data;
 
       if (data.success) {
@@ -93,7 +93,7 @@ export default function Fuentes() {
         setModalAbierto(false);
         setFormData({ nombre: '', url: '' });
         cargarFuentes();
-        
+
         setTimeout(() => {
           alert(
             'La fuente se creó con selectores HTML estándar.\n\n' +
@@ -118,7 +118,7 @@ export default function Fuentes() {
     try {
       const response = await fuentesAPI.eliminar(id);
       const data = response.data;
-      
+
       if (data.success) {
         setSuccess('Fuente eliminada');
         cargarFuentes();
@@ -184,8 +184,8 @@ export default function Fuentes() {
           </p>
         </div>
 
-        <Button 
-          onClick={() => setModalAbierto(true)} 
+        <Button
+          onClick={() => setModalAbierto(true)}
           className="gap-2"
           disabled={!puedeAgregarFuente || loadingPlan}
           title={!puedeAgregarFuente ? 'Límite de fuentes alcanzado. Actualiza tu plan.' : ''}
@@ -229,7 +229,7 @@ export default function Fuentes() {
           <p className="text-gray-400 mb-6">
             Agrega tu primera fuente de noticias para comenzar el scraping
           </p>
-          <Button 
+          <Button
             onClick={() => setModalAbierto(true)}
             disabled={!puedeAgregarFuente}
             className="gap-2"
@@ -274,27 +274,6 @@ export default function Fuentes() {
               <p className="text-sm text-gray-400 mb-4 break-all">
                 {fuente.url}
               </p>
-
-              <div className="flex gap-2">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  className="flex-1 gap-2"
-                  onClick={() => {
-                    alert('Funcionalidad de edición completa próximamente');
-                  }}
-                >
-                  <Edit className="w-4 h-4" />
-                  Editar
-                </Button>
-                <Button
-                  variant="error"
-                  size="sm"
-                  onClick={() => handleEliminar(fuente.id, fuente.nombre)}
-                >
-                  <Trash2 className="w-4 h-4" />
-                </Button>
-              </div>
             </div>
           ))}
         </div>
