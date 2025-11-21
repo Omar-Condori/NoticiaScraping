@@ -33,6 +33,7 @@ export default function Noticias() {
   const [loading, setLoading] = useState(false);
   const [scraping, setScraping] = useState(false);
   const [error, setError] = useState('');
+  const [selectedNews, setSelectedNews] = useState(null); // Estado para el modal
 
   // Filtros
   const [fuenteSeleccionada, setFuenteSeleccionada] = useState('');
@@ -386,7 +387,11 @@ export default function Noticias() {
         <>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {noticias.map((noticia, index) => (
-              <Card key={`${noticia.id}-${index}`} noticia={noticia} />
+              <Card
+                key={`${noticia.id}-${index}`}
+                noticia={noticia}
+                onClick={(n) => setSelectedNews(n)}
+              />
             ))}
           </div>
 
@@ -451,6 +456,88 @@ export default function Noticias() {
             </div>
           )}
         </>
+      )}
+
+      {/* ==================== MODAL DE DETALLE DE NOTICIA ==================== */}
+      {selectedNews && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div
+            className="bg-dark-card border border-dark-border rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto shadow-2xl animate-in zoom-in-95 duration-200 relative"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Botón Cerrar */}
+            <button
+              onClick={() => setSelectedNews(null)}
+              className="absolute top-4 right-4 p-2 bg-black/50 hover:bg-black/70 text-white rounded-full transition-colors z-10"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+
+            {/* Imagen de Portada */}
+            <div className="relative h-64 md:h-96 w-full bg-dark-hover">
+              {selectedNews.imagen_url ? (
+                <img
+                  src={selectedNews.imagen_url}
+                  alt={selectedNews.titulo}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-accent-primary/20 to-accent-secondary/20">
+                  <span className="text-gray-500">Sin imagen</span>
+                </div>
+              )}
+              <div className="absolute inset-0 bg-gradient-to-t from-dark-card to-transparent opacity-90"></div>
+
+              <div className="absolute bottom-0 left-0 p-6 md:p-8 w-full">
+                {selectedNews.categoria && (
+                  <span className="inline-block px-3 py-1 mb-3 text-xs font-bold text-white bg-accent-primary rounded-full">
+                    {selectedNews.categoria}
+                  </span>
+                )}
+                <h2 className="text-2xl md:text-4xl font-bold text-white leading-tight shadow-black drop-shadow-lg">
+                  {selectedNews.titulo}
+                </h2>
+              </div>
+            </div>
+
+            {/* Contenido */}
+            <div className="p-6 md:p-8 space-y-6">
+              {/* Metadata */}
+              <div className="flex items-center gap-4 text-sm text-gray-400 border-b border-dark-border pb-6">
+                <span className="flex items-center gap-1">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+                  {selectedNews.fuente || 'Fuente desconocida'}
+                </span>
+                <span>•</span>
+                <span>
+                  {new Date(selectedNews.fecha_publicacion || selectedNews.fecha_scraping).toLocaleDateString('es-ES', {
+                    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+                  })}
+                </span>
+              </div>
+
+              {/* Resumen */}
+              <div className="prose prose-invert max-w-none">
+                <p className="text-lg text-gray-300 leading-relaxed">
+                  {selectedNews.resumen || "No hay resumen disponible para esta noticia."}
+                </p>
+              </div>
+
+              {/* Acciones */}
+              <div className="flex justify-end pt-6">
+                <a
+                  href={selectedNews.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-6 py-3 bg-accent-primary hover:bg-accent-hover text-white font-medium rounded-xl transition-all shadow-lg hover:shadow-accent-primary/25"
+                >
+                  Leer noticia completa en la fuente
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
