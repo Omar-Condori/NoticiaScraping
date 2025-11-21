@@ -287,6 +287,15 @@ export const dashboardAPI = {
   }
 };
 
+// ==================== CHATBOT API ====================
+export const chatAPI = {
+  enviarMensaje: (pregunta) => {
+    return axios.post(`${API_URL}/chat`, { pregunta }, {
+      headers: getAuthHeaders()
+    });
+  }
+};
+
 // ==================== EXPORTACIÓN DEFAULT (para compatibilidad) ====================
 const api = {
   auth: authAPI,
@@ -300,7 +309,8 @@ const api = {
   planes: planesAPI,
   pagos: pagosAPI,
   suscripciones: suscripcionesAPI,
-  admin: adminAPI
+  admin: adminAPI,
+  chat: chatAPI
 };
 
 export default api;

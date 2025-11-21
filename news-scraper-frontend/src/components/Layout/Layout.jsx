@@ -17,6 +17,7 @@ import {
   Crown, // <--- AGREGADO
 } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
+import ChatBotWidget from '../ChatBotWidget';
 
 const navigation = [
   { name: 'Dashboard', path: '/', icon: LayoutDashboard },
@@ -76,10 +77,9 @@ export default function Layout() {
                 onClick={() => setSidebarOpen(false)}
                 className={`
                   flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200
-                  ${
-                    isActive
-                      ? 'bg-gradient-to-r from-accent-primary to-accent-secondary text-white shadow-lg'
-                      : 'text-gray-600 dark:text-gray-400 hover:bg-light-hover dark:hover:bg-dark-hover hover:text-gray-900 dark:hover:text-white'
+                  ${isActive
+                    ? 'bg-gradient-to-r from-accent-primary to-accent-secondary text-white shadow-lg'
+                    : 'text-gray-600 dark:text-gray-400 hover:bg-light-hover dark:hover:bg-dark-hover hover:text-gray-900 dark:hover:text-white'
                   }
                 `}
               >
@@ -174,7 +174,7 @@ export default function Layout() {
                   <Moon className="w-5 h-5" />
                 )}
               </button>
-              
+
               {/* Info del usuario */}
               <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-light-hover dark:bg-dark-hover rounded-lg">
                 <div className="w-8 h-8 bg-gradient-to-br from-accent-primary to-accent-secondary rounded-full flex items-center justify-center">
@@ -206,6 +206,9 @@ export default function Layout() {
           <Outlet />
         </main>
       </div>
+
+      {/* Chatbot Widget Flotante */}
+      <ChatBotWidget />
     </div>
   );
 }

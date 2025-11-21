@@ -39,6 +39,8 @@ estadisticas_module = Estadisticas()
 busqueda_module = BusquedaAvanzada()
 exportador = Exportador()
 auth_manager = AuthManager()
+from chatbot import ChatBot
+chatbot_module = ChatBot(scraper.db)
 
 # Configuración de Swagger
 SWAGGER_URL = '/docs'
@@ -975,6 +977,37 @@ def obtener_resumen_dashboard():
         print(f"❌ Error en dashboard resumen: {e}")
         return jsonify({
             'error': 'Error obteniendo resumen del dashboard',
+            'detalle': str(e)
+        }), 500
+
+# ==================== ENDPOINTS DE CHATBOT (IA) ====================
+
+@app.route('/api/v1/chat', methods=['POST'])
+@jwt_required()
+def chat_ia():
+    """
+    Endpoint para conversar con el Asistente de Noticias.
+    Recibe: { "pregunta": "..." }
+    """
+    try:
+        usuario_id = get_jwt_identity()
+        data = request.get_json()
+        pregunta = data.get('pregunta')
+        
+        if not pregunta:
+            return jsonify({'error': 'Se requiere una pregunta'}), 400
+            
+        respuesta = chatbot_module.generar_respuesta(usuario_id, pregunta)
+        
+        return jsonify({
+            'success': True,
+            'data': respuesta
+        }), 200
+        
+    except Exception as e:
+        print(f"❌ Error en chat endpoint: {e}")
+        return jsonify({
+            'error': 'Error procesando mensaje',
             'detalle': str(e)
         }), 500
 
