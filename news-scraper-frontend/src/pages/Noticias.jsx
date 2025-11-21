@@ -1,37 +1,34 @@
 import { useState, useEffect } from 'react';
-import { noticiasAPI, fuentesAPI, categoriasAPI, paisesAPI } from '../services/api';
+import { noticiasAPI, fuentesAPI, paisesAPI } from '../services/api';
 import Card from '../components/ui/Card';
 import Input from '../components/ui/Input';
 import Skeleton from '../components/ui/Skeleton';
 import { AlertCircle, Filter, Tag, Download, ChevronLeft, ChevronRight } from 'lucide-react';
 import Button from '../components/ui/Button';
 
-// ✅ CATEGORÍAS PREDEFINIDAS (NUEVO)
-const CATEGORIAS_PREDEFINIDAS = [
+// ✅ CATEGORÍAS OFICIALES DE NOTICIAS (IGUAL QUE EN DASHBOARD.JSX)
+const CATEGORIAS_NOTICIAS = [
   'Política',
   'Economía',
-  'Salud',
   'Deportes',
+  'Internacional',
   'Tecnología',
-  'Ciencia',
-  'Cultura',
-  'Educación',
-  'Sociedad',
-  'Internacionales',
-  'Mundo',
-  'Entretenimiento',
   'Espectáculos',
-  'Agricultura',
-  'Energía',
-  'Ciberseguridad',
-  'Finanzas',
-  'Clima'
+  'Salud',
+  'Cultura',
+  'Ciencia',
+  'Policiales',
+  'Medio Ambiente',
+  'Estilo de Vida',
+  'Viajes',
+  'Motor',
+  'Opinión'
 ];
 
 export default function Noticias() {
   const [noticias, setNoticias] = useState([]);
   const [fuentes, setFuentes] = useState([]);
-  const [categorias, setCategorias] = useState(CATEGORIAS_PREDEFINIDAS); // ✅ INICIALIZAR CON PREDEFINIDAS
+  const [categorias] = useState(CATEGORIAS_NOTICIAS); // ✅ Categorías fijas CON PREDEFINIDAS
   const [paises, setPaises] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -110,13 +107,14 @@ export default function Noticias() {
     }
   };
 
-  // ✅ CARGAR FUENTES Y CATEGORÍAS - MEJORADO
+  // ✅ CARGAR FUENTES Y PAÍSES - MEJORADO
   useEffect(() => {
     const cargarDatos = async () => {
       try {
-        const [fuentesResponse, categoriasResponse] = await Promise.all([
+        // Cargar fuentes y países (categorías son fijas)
+        const [fuentesResponse, paisesResponse] = await Promise.all([
           fuentesAPI.listar(true),
-          categoriasAPI.obtener(),
+          paisesAPI.obtener()
         ]);
 
         // ✅ Acceder a response.data
@@ -126,20 +124,7 @@ export default function Noticias() {
           setFuentes([]);
         }
 
-        // ✅ COMBINAR CATEGORÍAS PREDEFINIDAS + BD (sin duplicados)
-        if (categoriasResponse?.data && categoriasResponse.data.success !== false) {
-          const categoriasDB = categoriasResponse.data.categorias || [];
-          // Combinar y eliminar duplicados
-          const todasCategorias = [...new Set([...CATEGORIAS_PREDEFINIDAS, ...categoriasDB])];
-          // Ordenar alfabéticamente
-          setCategorias(todasCategorias.sort());
-        } else {
-          // Si falla, usar solo las predefinidas
-          setCategorias(CATEGORIAS_PREDEFINIDAS);
-        }
-
         // ✅ CARGAR PAÍSES
-        const paisesResponse = await paisesAPI.obtener();
         if (paisesResponse?.data && paisesResponse.data.success !== false) {
           setPaises(paisesResponse.data.paises || []);
         } else {
@@ -148,8 +133,7 @@ export default function Noticias() {
       } catch (err) {
         console.error('Error cargando datos:', err);
         setFuentes([]);
-        // En caso de error, mantener las categorías predefinidas
-        setCategorias(CATEGORIAS_PREDEFINIDAS);
+        setPaises([]);
       }
     };
 
@@ -391,8 +375,8 @@ export default function Noticias() {
                         onClick={() => setPaginaActual(pageNum)}
                         disabled={loading}
                         className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors ${paginaActual === pageNum
-                            ? 'bg-accent-primary text-white'
-                            : 'bg-dark-hover text-gray-300 hover:bg-dark-border'
+                          ? 'bg-accent-primary text-white'
+                          : 'bg-dark-hover text-gray-300 hover:bg-dark-border'
                           }`}
                       >
                         {pageNum}

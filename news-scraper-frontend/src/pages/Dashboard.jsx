@@ -6,32 +6,29 @@ import Input from '../components/ui/Input';
 import Skeleton from '../components/ui/Skeleton';
 import { RefreshCw, AlertCircle, Filter, Tag } from 'lucide-react';
 
-// ✅ CATEGORÍAS PREDEFINIDAS (IGUAL QUE EN NOTICIAS.JSX)
-const CATEGORIAS_PREDEFINIDAS = [
+// ✅ CATEGORÍAS OFICIALES DE NOTICIAS
+const CATEGORIAS_NOTICIAS = [
   'Política',
   'Economía',
-  'Salud',
   'Deportes',
+  'Internacional',
   'Tecnología',
-  'Ciencia',
-  'Cultura',
-  'Educación',
-  'Sociedad',
-  'Internacionales',
-  'Mundo',
-  'Entretenimiento',
   'Espectáculos',
-  'Agricultura',
-  'Energía',
-  'Ciberseguridad',
-  'Finanzas',
-  'Clima'
+  'Salud',
+  'Cultura',
+  'Ciencia',
+  'Policiales',
+  'Medio Ambiente',
+  'Estilo de Vida',
+  'Viajes',
+  'Motor',
+  'Opinión'
 ];
 
 export default function Dashboard() {
   const [noticias, setNoticias] = useState([]);
   const [fuentes, setFuentes] = useState([]);
-  const [categorias, setCategorias] = useState(CATEGORIAS_PREDEFINIDAS); // ✅ INICIALIZAR CON PREDEFINIDAS
+  const [categorias] = useState(CATEGORIAS_NOTICIAS); // ✅ Categorías fijas
   const [paises, setPaises] = useState([]);
   const [loading, setLoading] = useState(false);
   const [scraping, setScraping] = useState(false);
@@ -151,9 +148,10 @@ export default function Dashboard() {
   useEffect(() => {
     const cargarDatos = async () => {
       try {
-        const [fuentesResponse, categoriasResponse] = await Promise.all([
+        // Cargar fuentes y países (categorías son fijas)
+        const [fuentesResponse, paisesResponse] = await Promise.all([
           fuentesAPI.listar(true),
-          categoriasAPI.obtener(),
+          paisesAPI.obtener()
         ]);
 
         // ✅ Acceder a response.data
@@ -163,20 +161,7 @@ export default function Dashboard() {
           setFuentes([]);
         }
 
-        // ✅ COMBINAR CATEGORÍAS PREDEFINIDAS + BD (sin duplicados)
-        if (categoriasResponse?.data && categoriasResponse.data.success !== false) {
-          const categoriasDB = categoriasResponse.data.categorias || [];
-          // Combinar y eliminar duplicados
-          const todasCategorias = [...new Set([...CATEGORIAS_PREDEFINIDAS, ...categoriasDB])];
-          // Ordenar alfabéticamente
-          setCategorias(todasCategorias.sort());
-        } else {
-          // Si falla, usar solo las predefinidas
-          setCategorias(CATEGORIAS_PREDEFINIDAS);
-        }
-
         // ✅ CARGAR PAÍSES
-        const paisesResponse = await paisesAPI.obtener();
         if (paisesResponse?.data && paisesResponse.data.success !== false) {
           setPaises(paisesResponse.data.paises || []);
         } else {
@@ -185,8 +170,7 @@ export default function Dashboard() {
       } catch (err) {
         console.error('Error cargando datos:', err);
         setFuentes([]);
-        // En caso de error, mantener las categorías predefinidas
-        setCategorias(CATEGORIAS_PREDEFINIDAS);
+        setPaises([]);
       }
     };
 
