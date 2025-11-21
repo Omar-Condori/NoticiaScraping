@@ -8,17 +8,53 @@ class Exportador:
         pass
     
     def exportar_csv(self, noticias: List[Dict]) -> str:
-        """Exporta noticias a formato CSV"""
+        """Exporta noticias a formato CSV optimizado para ETL
+        
+        Incluye todos los campos relevantes en columnas separadas para
+        facilitar procesos de extracción, transformación y carga de datos.
+        """
         output = StringIO()
         
         if not noticias:
             return ""
         
-        # Definir columnas (incluir todas las posibles)
-        columnas = ['id', 'titulo', 'url', 'resumen', 'fuente', 'fecha_scraping', 
-                   'fecha_publicacion', 'categoria', 'imagen_url']
+        # ✅ COLUMNAS COMPLETAS PARA ETL (en orden lógico)
+        columnas = [
+            # Identificadores
+            'id',
+            'fuente_id',
+            
+            # Contenido principal
+            'titulo',
+            'resumen',
+            'url',
+            
+            # Clasificación
+            'categoria',
+            'pais',
+            
+            # Información de fuente
+            'fuente',
+            
+            # Recursos multimedia
+            'imagen_url',
+            
+            # Metadatos temporales
+            'fecha_publicacion',
+            'fecha_scraping',
+            
+            # Otros campos
+            'autor',
+            'tags'
+        ]
         
-        writer = csv.DictWriter(output, fieldnames=columnas, extrasaction='ignore')
+        writer = csv.DictWriter(
+            output, 
+            fieldnames=columnas, 
+            extrasaction='ignore',
+            quoting=csv.QUOTE_MINIMAL,
+            lineterminator='\n'
+        )
         writer.writeheader()
         
         for noticia in noticias:
@@ -26,10 +62,19 @@ class Exportador:
             if not isinstance(noticia, dict):
                 noticia = dict(noticia)
             
-            # Preparar fila con valores por defecto
+            # Preparar fila con valores limpios
             fila = {}
             for col in columnas:
-                fila[col] = noticia.get(col, '')
+                valor = noticia.get(col, '')
+                
+                # Limpiar valores para CSV
+                if valor is None:
+                    fila[col] = ''
+                elif isinstance(valor, (list, dict)):
+                    # Convertir listas/dicts a string JSON
+                    fila[col] = json.dumps(valor, ensure_ascii=False)
+                else:
+                    fila[col] = str(valor).strip()
             
             writer.writerow(fila)
         

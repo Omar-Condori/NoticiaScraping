@@ -951,7 +951,34 @@ def reanudar_tarea_programada(nombre):
         }), 500
 
 
-# ==================== ENDPOINTS DE ESTADÍSTICAS ====================
+# ==================== ENDPOINTS DE DASHBOARD PERSONALIZADO ====================
+
+@app.route('/api/v1/dashboard/resumen', methods=['GET'])
+@jwt_required()
+def obtener_resumen_dashboard():
+    """
+    Obtiene el resumen personalizado del dashboard para el usuario actual.
+    Incluye predicciones, tendencias y métricas filtradas por usuario.
+    """
+    try:
+        usuario_id = get_jwt_identity()
+        
+        # Usar la nueva lógica personalizada
+        datos = estadisticas_module.obtener_dashboard_personalizado(usuario_id)
+        
+        return jsonify({
+            'success': True,
+            'data': datos
+        }), 200
+        
+    except Exception as e:
+        print(f"❌ Error en dashboard resumen: {e}")
+        return jsonify({
+            'error': 'Error obteniendo resumen del dashboard',
+            'detalle': str(e)
+        }), 500
+
+# ==================== ENDPOINTS DE ESTADÍSTICAS (LEGACY/ADMIN) ====================
 
 @app.route('/api/v1/estadisticas', methods=['GET'])
 @jwt_required(optional=True)

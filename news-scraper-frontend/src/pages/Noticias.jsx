@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
-import { noticiasAPI, fuentesAPI, paisesAPI } from '../services/api';
+import { noticiasAPI, fuentesAPI, paisesAPI, scrapingAPI } from '../services/api';
 import Card from '../components/ui/Card';
 import Input from '../components/ui/Input';
 import Skeleton from '../components/ui/Skeleton';
-import { AlertCircle, Filter, Tag, Download, ChevronLeft, ChevronRight } from 'lucide-react';
+import { AlertCircle, Filter, Tag, Download, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
 import Button from '../components/ui/Button';
 
 // ✅ CATEGORÍAS OFICIALES DE NOTICIAS (IGUAL QUE EN DASHBOARD.JSX)
@@ -31,6 +31,7 @@ export default function Noticias() {
   const [categorias] = useState(CATEGORIAS_NOTICIAS); // ✅ Categorías fijas CON PREDEFINIDAS
   const [paises, setPaises] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [scraping, setScraping] = useState(false);
   const [error, setError] = useState('');
 
   // Filtros
@@ -104,6 +105,49 @@ export default function Noticias() {
       setTotalPaginas(0);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // ✅ FUNCIÓN DE SCRAPING (Movida desde Dashboard)
+  const ejecutarScraping = async () => {
+    if (scraping) return;
+
+    setScraping(true);
+    setError('');
+
+    try {
+      // Construir objeto de parámetros para scraping
+      const params = {
+        limite: 5 // Límite por defecto para scraping manual
+      };
+
+      // Si hay fuente seleccionada, scrapear solo esa fuente
+      if (fuenteSeleccionada && fuenteSeleccionada !== '') {
+        params.fuente_id = parseInt(fuenteSeleccionada, 10);
+      }
+
+      const response = await scrapingAPI.ejecutar(params);
+      const data = response.data;
+
+      if (data.success) {
+        // Recargar noticias después del scraping
+        setPaginaActual(1);
+        await cargarNoticias();
+        alert(`Scraping completado: ${data.nuevas || 0} noticias nuevas encontradas.`);
+      } else {
+        throw new Error(data.error || 'Error en el scraping');
+      }
+    } catch (err) {
+      console.error('Error en ejecutarScraping:', err);
+
+      if (err.response?.status === 403) {
+        const backendMessage = err.response?.data?.mensaje || err.response?.data?.error;
+        setError(backendMessage || 'Has alcanzado el límite de scraping de tu plan.');
+      } else {
+        setError(err.message || 'Error al ejecutar el scraping');
+      }
+    } finally {
+      setScraping(false);
     }
   };
 
@@ -201,6 +245,15 @@ export default function Noticias() {
         </div>
 
         <div className="flex gap-2">
+          <Button
+            onClick={ejecutarScraping}
+            disabled={scraping}
+            className="gap-2 bg-accent-primary hover:bg-accent-hover text-white"
+          >
+            <RefreshCw className={`w-4 h-4 ${scraping ? 'animate-spin' : ''}`} />
+            {scraping ? 'Scrapeando...' : 'Scrapear ahora'}
+          </Button>
+
           <Button
             onClick={() => handleExportar('json')}
             variant="secondary"
