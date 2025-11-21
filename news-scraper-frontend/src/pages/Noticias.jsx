@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { noticiasAPI, fuentesAPI, categoriasAPI } from '../services/api';
+import { noticiasAPI, fuentesAPI, categoriasAPI, paisesAPI } from '../services/api';
 import Card from '../components/ui/Card';
 import Input from '../components/ui/Input';
 import Skeleton from '../components/ui/Skeleton';
@@ -32,14 +32,16 @@ export default function Noticias() {
   const [noticias, setNoticias] = useState([]);
   const [fuentes, setFuentes] = useState([]);
   const [categorias, setCategorias] = useState(CATEGORIAS_PREDEFINIDAS); // ✅ INICIALIZAR CON PREDEFINIDAS
+  const [paises, setPaises] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  
+
   // Filtros
   const [fuenteSeleccionada, setFuenteSeleccionada] = useState('');
   const [categoriaSeleccionada, setCategoriaSeleccionada] = useState('');
+  const [paisSeleccionado, setPaisSeleccionado] = useState('');
   const [limite, setLimite] = useState(12);
-  
+
   // Paginación
   const [paginaActual, setPaginaActual] = useState(1);
   const [totalNoticias, setTotalNoticias] = useState(0);
@@ -52,7 +54,7 @@ export default function Noticias() {
 
     try {
       const offset = (paginaActual - 1) * limite;
-      
+
       // ✅ CORRECCIÓN: Construir objeto de parámetros
       const params = {
         limite: limite,
@@ -69,6 +71,11 @@ export default function Noticias() {
         params.categoria = categoriaSeleccionada;
       }
 
+      // Solo agregar país si está seleccionado
+      if (paisSeleccionado && paisSeleccionado !== '') {
+        params.pais = paisSeleccionado;
+      }
+
       // ✅ Llamar a la API con objeto de parámetros
       const response = await noticiasAPI.obtener(params);
       const data = response.data;
@@ -81,7 +88,7 @@ export default function Noticias() {
         setTotalPaginas(0);
         return;
       }
-      
+
       if (data && data.success !== false) {
         setNoticias(data.noticias || []);
         setTotalNoticias(data.total || 0);
@@ -130,6 +137,14 @@ export default function Noticias() {
           // Si falla, usar solo las predefinidas
           setCategorias(CATEGORIAS_PREDEFINIDAS);
         }
+
+        // ✅ CARGAR PAÍSES
+        const paisesResponse = await paisesAPI.obtener();
+        if (paisesResponse?.data && paisesResponse.data.success !== false) {
+          setPaises(paisesResponse.data.paises || []);
+        } else {
+          setPaises([]);
+        }
       } catch (err) {
         console.error('Error cargando datos:', err);
         setFuentes([]);
@@ -144,12 +159,12 @@ export default function Noticias() {
   // Cargar noticias cuando cambie la página o los filtros
   useEffect(() => {
     cargarNoticias();
-  }, [paginaActual, limite, fuenteSeleccionada, categoriaSeleccionada]);
+  }, [paginaActual, limite, fuenteSeleccionada, categoriaSeleccionada, paisSeleccionado]);
 
   // Resetear a página 1 cuando cambien los filtros
   useEffect(() => {
     setPaginaActual(1);
-  }, [fuenteSeleccionada, categoriaSeleccionada, limite]);
+  }, [fuenteSeleccionada, categoriaSeleccionada, paisSeleccionado, limite]);
 
   // ✅ FUNCIÓN CORREGIDA: handleExportar
   const handleExportar = async (formato) => {
@@ -165,8 +180,13 @@ export default function Noticias() {
         params.fuente_id = parseInt(fuenteSeleccionada, 10);
       }
 
+      // Solo agregar país si está seleccionado
+      if (paisSeleccionado && paisSeleccionado !== '') {
+        params.pais = paisSeleccionado;
+      }
+
       const response = await noticiasAPI.exportar(params);
-      
+
       // Si la respuesta es un blob
       const blob = response.data;
       const url = window.URL.createObjectURL(blob);
@@ -223,7 +243,7 @@ export default function Noticias() {
           <h2 className="text-lg font-semibold text-white">Filtros</h2>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {/* Selector de Fuente */}
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-2">
@@ -260,6 +280,25 @@ export default function Noticias() {
               {categorias.map((categoria) => (
                 <option key={categoria} value={categoria}>
                   {categoria}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Selector de País */}
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+              País
+            </label>
+            <select
+              value={paisSeleccionado}
+              onChange={(e) => setPaisSeleccionado(e.target.value)}
+              className="w-full px-4 py-2 bg-dark-hover border border-dark-border rounded-lg text-white focus:ring-2 focus:ring-accent-primary focus:border-transparent"
+            >
+              <option value="">Todos los países</option>
+              {paises.map((pais) => (
+                <option key={pais} value={pais}>
+                  {pais}
                 </option>
               ))}
             </select>
@@ -320,7 +359,7 @@ export default function Noticias() {
               <div className="text-sm text-gray-400">
                 Página {paginaActual} de {totalPaginas}
               </div>
-              
+
               <div className="flex items-center gap-2">
                 <Button
                   variant="secondary"
@@ -331,7 +370,7 @@ export default function Noticias() {
                   <ChevronLeft className="w-4 h-4" />
                   Anterior
                 </Button>
-                
+
                 {/* Números de página */}
                 <div className="flex items-center gap-1">
                   {Array.from({ length: Math.min(5, totalPaginas) }, (_, i) => {
@@ -345,24 +384,23 @@ export default function Noticias() {
                     } else {
                       pageNum = paginaActual - 2 + i;
                     }
-                    
+
                     return (
                       <button
                         key={pageNum}
                         onClick={() => setPaginaActual(pageNum)}
                         disabled={loading}
-                        className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
-                          paginaActual === pageNum
+                        className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors ${paginaActual === pageNum
                             ? 'bg-accent-primary text-white'
                             : 'bg-dark-hover text-gray-300 hover:bg-dark-border'
-                        }`}
+                          }`}
                       >
                         {pageNum}
                       </button>
                     );
                   })}
                 </div>
-                
+
                 <Button
                   variant="secondary"
                   onClick={() => setPaginaActual(prev => Math.min(totalPaginas, prev + 1))}

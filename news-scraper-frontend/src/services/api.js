@@ -66,6 +66,16 @@ export const categoriasAPI = {
   }
 };
 
+// ==================== PAISES API ====================
+export const paisesAPI = {
+  obtener: () => {
+    return axios.get(`${API_URL}/paises`, {
+      headers: getAuthHeaders()
+    });
+  }
+};
+
+
 // ==================== FUENTES API ====================
 export const fuentesAPI = {
   listar: (soloActivas = false) => {

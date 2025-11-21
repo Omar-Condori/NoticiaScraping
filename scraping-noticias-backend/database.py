@@ -166,6 +166,7 @@ class Database:
                     resumen TEXT,
                     imagen_url VARCHAR(1024),
                     categoria VARCHAR(255),
+                    pais VARCHAR(100),
                     fuente_id INTEGER REFERENCES fuentes(id) ON DELETE CASCADE,
                     user_id INTEGER REFERENCES usuarios(id) ON DELETE CASCADE,
                     fecha_publicacion TIMESTAMP,
@@ -203,6 +204,15 @@ class Database:
             except:
                 pass
             
+            # Agregado de columna pais si no existe a noticias
+            try:
+                cursor.execute("""
+                    ALTER TABLE noticias 
+                    ADD COLUMN IF NOT EXISTS pais VARCHAR(100)
+                """)
+            except:
+                pass
+            
             # --- TABLA: scraping_diario (✅ NUEVO)
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS scraping_diario (
@@ -222,6 +232,7 @@ class Database:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_noticias_fecha ON noticias(fecha_scraping DESC)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_noticias_url ON noticias(url)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_noticias_categoria ON noticias(categoria)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_noticias_pais ON noticias(pais)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_noticias_user_id ON noticias(user_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_usuarios_nombre_usuario ON usuarios(nombre_usuario)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_usuarios_email ON usuarios(email)")
@@ -903,13 +914,14 @@ class Database:
         
         cursor = connection.cursor()
         query = """
-            INSERT INTO noticias (titulo, url, resumen, imagen_url, categoria, fuente_id, user_id, fecha_publicacion)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO noticias (titulo, url, resumen, imagen_url, categoria, pais, fuente_id, user_id, fecha_publicacion)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (url, user_id) DO UPDATE SET 
                 titulo = EXCLUDED.titulo,
                 resumen = EXCLUDED.resumen,
                 imagen_url = EXCLUDED.imagen_url,
                 categoria = EXCLUDED.categoria,
+                pais = EXCLUDED.pais,
                 fecha_publicacion = EXCLUDED.fecha_publicacion,
                 fecha_scraping = CURRENT_TIMESTAMP
             RETURNING id
@@ -921,6 +933,7 @@ class Database:
             noticia.get('resumen', ''),
             noticia.get('imagen_url'),
             noticia.get('categoria'),
+            noticia.get('pais'),
             noticia.get('fuente_id'),
             user_id,
             noticia.get('fecha_publicacion')
@@ -945,6 +958,7 @@ class Database:
         offset: int = 0,
         fuente_id: Optional[int] = None,
         categoria: Optional[str] = None,
+        pais: Optional[str] = None,
         user_id: Optional[int] = None,
         es_admin: bool = False
     ):
@@ -969,6 +983,10 @@ class Database:
         if categoria:
             where_clause += " AND n.categoria = %s"
             parametros.append(categoria)
+        
+        if pais:
+            where_clause += " AND n.pais = %s"
+            parametros.append(pais)
         
         count_query = f"""
             SELECT COUNT(*) as total
@@ -1091,6 +1109,39 @@ class Database:
             
         except Exception as e:
             print(f"❌ Error obteniendo categorías: {e}")
+            return []
+        finally:
+            cursor.close()
+            connection.close()
+    
+    def obtener_paises(self, user_id: Optional[int] = None, es_admin: bool = False) -> List[str]:
+        """Obtiene todos los países únicos de noticias (filtrado por usuario si no es admin)"""
+        connection = self.get_connection()
+        if not connection:
+            return []
+        
+        cursor = connection.cursor()
+        
+        try:
+            query = """
+                SELECT DISTINCT pais 
+                FROM noticias 
+                WHERE pais IS NOT NULL
+            """
+            params = []
+            
+            if not es_admin and user_id is not None:
+                query += " AND user_id = %s"
+                params.append(int(user_id))
+            
+            query += " ORDER BY pais"
+            
+            cursor.execute(query, params)
+            paises = [row[0] for row in cursor.fetchall()]
+            return paises
+            
+        except Exception as e:
+            print(f"❌ Error obteniendo países: {e}")
             return []
         finally:
             cursor.close()

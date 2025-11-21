@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { noticiasAPI, fuentesAPI, categoriasAPI, scrapingAPI } from '../services/api';
+import { noticiasAPI, fuentesAPI, categoriasAPI, scrapingAPI, paisesAPI } from '../services/api';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
@@ -32,15 +32,17 @@ export default function Dashboard() {
   const [noticias, setNoticias] = useState([]);
   const [fuentes, setFuentes] = useState([]);
   const [categorias, setCategorias] = useState(CATEGORIAS_PREDEFINIDAS); // ✅ INICIALIZAR CON PREDEFINIDAS
+  const [paises, setPaises] = useState([]);
   const [loading, setLoading] = useState(false);
   const [scraping, setScraping] = useState(false);
   const [error, setError] = useState('');
-  
+
   // Filtros
   const [fuenteSeleccionada, setFuenteSeleccionada] = useState('');
   const [categoriaSeleccionada, setCategoriaSeleccionada] = useState('');
+  const [paisSeleccionado, setPaisSeleccionado] = useState('');
   const [limite, setLimite] = useState(20);
-  
+
   // Estado para scroll infinito
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(true);
@@ -50,21 +52,21 @@ export default function Dashboard() {
   // ✅ FUNCIÓN CORREGIDA: cargarNoticias
   const cargarNoticias = useCallback(async (reset = false) => {
     if (!hasMore && !reset) return;
-    
+
     const isInitialLoad = reset || offset === 0;
-    
+
     if (isInitialLoad) {
       setLoading(true);
       setOffset(0);
     } else {
       setLoadingMore(true);
     }
-    
+
     setError('');
 
     try {
       const currentOffset = reset ? 0 : offset;
-      
+
       // ✅ CORRECCIÓN: Construir objeto de parámetros
       const params = {
         limite: limite,
@@ -81,10 +83,15 @@ export default function Dashboard() {
         params.categoria = categoriaSeleccionada;
       }
 
+      // Solo agregar país si está seleccionado
+      if (paisSeleccionado && paisSeleccionado !== '') {
+        params.pais = paisSeleccionado;
+      }
+
       // ✅ Llamar a la API con objeto de parámetros
       const response = await noticiasAPI.obtener(params);
       const data = response.data;
-      
+
       // Si hay error de conexión, mostrar mensaje pero no lanzar excepción
       if (data && data.success === false && data.error && data.error.includes('No se pudo conectar')) {
         setError(data.error);
@@ -92,7 +99,7 @@ export default function Dashboard() {
         setHasMore(false);
         return;
       }
-      
+
       if (!data || data.success === false) {
         throw new Error(data?.error || 'Error cargando noticias');
       }
@@ -102,7 +109,7 @@ export default function Dashboard() {
       } else {
         setNoticias(prev => [...prev, ...(data.noticias || [])]);
       }
-      
+
       // Si recibimos menos noticias que el límite, no hay más
       setHasMore((data.noticias || []).length === limite);
       setOffset(prev => reset ? limite : prev + limite);
@@ -167,6 +174,14 @@ export default function Dashboard() {
           // Si falla, usar solo las predefinidas
           setCategorias(CATEGORIAS_PREDEFINIDAS);
         }
+
+        // ✅ CARGAR PAÍSES
+        const paisesResponse = await paisesAPI.obtener();
+        if (paisesResponse?.data && paisesResponse.data.success !== false) {
+          setPaises(paisesResponse.data.paises || []);
+        } else {
+          setPaises([]);
+        }
       } catch (err) {
         console.error('Error cargando datos:', err);
         setFuentes([]);
@@ -178,7 +193,7 @@ export default function Dashboard() {
     cargarDatos();
   }, []);
 
-  
+
   // Cargar noticias iniciales
   useEffect(() => {
     cargarNoticias(true);
@@ -189,7 +204,7 @@ export default function Dashboard() {
     setOffset(0);
     setHasMore(true);
     cargarNoticias(true);
-  }, [fuenteSeleccionada, categoriaSeleccionada, limite]);
+  }, [fuenteSeleccionada, categoriaSeleccionada, paisSeleccionado, limite]);
 
 
   // ✅ FUNCIÓN CORREGIDA: ejecutarScraping con mejor manejo de errores
@@ -221,7 +236,7 @@ export default function Dashboard() {
       }
     } catch (err) {
       console.error('Error en ejecutarScraping:', err);
-      
+
       // ✅ MOSTRAR EL MENSAJE DEL BACKEND (incluye mensaje de límite alcanzado)
       if (err.response?.status === 403) {
         // Error 403 - Límite alcanzado
@@ -271,7 +286,7 @@ export default function Dashboard() {
           <h2 className="text-lg font-semibold text-white">Filtros</h2>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {/* Selector de Fuente */}
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-2">
@@ -308,6 +323,25 @@ export default function Dashboard() {
               {categorias.map((categoria) => (
                 <option key={categoria} value={categoria}>
                   {categoria}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Selector de País */}
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+              País
+            </label>
+            <select
+              value={paisSeleccionado}
+              onChange={(e) => setPaisSeleccionado(e.target.value)}
+              className="w-full px-4 py-2 bg-dark-hover border border-dark-border rounded-lg text-white focus:ring-2 focus:ring-accent-primary focus:border-transparent"
+            >
+              <option value="">Todos los países</option>
+              {paises.map((pais) => (
+                <option key={pais} value={pais}>
+                  {pais}
                 </option>
               ))}
             </select>

@@ -426,11 +426,13 @@ def obtener_noticias():
         - offset: punto de inicio para paginación (default: 0)
         - fuente_id: ID de fuente específica (opcional)
         - categoria: filtrar por categoría (opcional)
+        - pais: filtrar por país (opcional)
     """
     limite = request.args.get('limite', default=50, type=int)
     offset = request.args.get('offset', default=0, type=int)
     fuente_id = request.args.get('fuente_id', type=int)
     categoria = request.args.get('categoria', type=str)
+    pais = request.args.get('pais', type=str)
     
     usuario_id = None
     es_admin = False
@@ -449,6 +451,7 @@ def obtener_noticias():
             offset=offset,
             fuente_id=fuente_id,
             categoria=categoria,
+            pais=pais,
             user_id=usuario_id,
             es_admin=es_admin
         )
@@ -549,6 +552,40 @@ def obtener_categorias():
     except Exception as e:
         return jsonify({
             'error': 'Error obteniendo categorías',
+            'detalle': str(e)
+        }), 500
+
+@app.route('/api/v1/paises', methods=['GET'])
+@jwt_required(optional=True)
+def obtener_paises():
+    """
+    Obtiene todos los países únicos de noticias (filtrado por usuario si no es admin)
+    
+    Retorna una lista de strings con los países disponibles
+    """
+    usuario_id = None
+    es_admin = False
+    try:
+        usuario_id = get_jwt_identity()
+        from flask_jwt_extended import get_jwt
+        claims = get_jwt()
+        rol = claims.get('rol', 'usuario')
+        es_admin = (rol == 'admin')
+    except:
+        pass
+    
+    try:
+        paises = scraper.obtener_paises(user_id=usuario_id, es_admin=es_admin)
+        
+        return jsonify({
+            'success': True,
+            'total': len(paises),
+            'paises': paises
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            'error': 'Error obteniendo países',
             'detalle': str(e)
         }), 500
 

@@ -262,6 +262,100 @@ class NewsScraper:
         
         return None
     
+    def _detectar_pais(self, url_fuente: str) -> Optional[str]:
+        """Detecta el país de una fuente basándose en su URL"""
+        if not url_fuente:
+            return None
+        
+        url_lower = url_fuente.lower()
+        
+        # ===== MAPEO POR DOMINIO ESPECÍFICO =====
+        dominios_pais = {
+            # Perú
+            'elcomercio.pe': 'Perú',
+            'rpp.pe': 'Perú',
+            'larepublica.pe': 'Perú',
+            'elperuano.pe': 'Perú',
+            'gestion.pe': 'Perú',
+            'peru21.pe': 'Perú',
+            'andina.pe': 'Perú',
+            'trome.pe': 'Perú',
+            
+            # México
+            'eluniversal.com.mx': 'México',
+            'jornada.com.mx': 'México',
+            'reforma.com': 'México',
+            'milenio.com': 'México',
+            'excelsior.com.mx': 'México',
+            
+            # Argentina
+            'clarin.com': 'Argentina',
+            'lanacion.com.ar': 'Argentina',
+            'pagina12.com.ar': 'Argentina',
+            'infobae.com': 'Argentina',
+            
+            # Chile
+            'emol.com': 'Chile',
+            'latercera.com': 'Chile',
+            'elmercurio.com': 'Chile',
+            
+            # Colombia
+            'eltiempo.com': 'Colombia',
+            'elespectador.com': 'Colombia',
+            'semana.com': 'Colombia',
+            
+            # España
+            'elpais.com': 'España',
+            'elmundo.es': 'España',
+            'abc.es': 'España',
+            'lavanguardia.com': 'España',
+            '20minutos.es': 'España',
+            
+            # USA
+            'nytimes.com': 'Estados Unidos',
+            'washingtonpost.com': 'Estados Unidos',
+            'cnn.com': 'Estados Unidos',
+            'foxnews.com': 'Estados Unidos',
+            'usatoday.com': 'Estados Unidos',
+            
+            # UK
+            'bbc.com': 'Reino Unido',
+            'bbc.co.uk': 'Reino Unido',
+            'theguardian.com': 'Reino Unido',
+            'telegraph.co.uk': 'Reino Unido',
+            'independent.co.uk': 'Reino Unido',
+        }
+        
+        # Buscar coincidencia de dominio
+        for dominio, pais in dominios_pais.items():
+            if dominio in url_lower:
+                return pais
+        
+        # ===== MAPEO POR TLD (Top Level Domain) =====
+        tld_pais = {
+            '.pe': 'Perú',
+            '.mx': 'México',
+            '.ar': 'Argentina',
+            '.cl': 'Chile',
+            '.co': 'Colombia',
+            '.es': 'España',
+            '.uk': 'Reino Unido',
+            '.br': 'Brasil',
+            '.ve': 'Venezuela',
+            '.ec': 'Ecuador',
+            '.bo': 'Bolivia',
+            '.py': 'Paraguay',
+            '.uy': 'Uruguay',
+        }
+        
+        # Buscar por TLD
+        for tld, pais in tld_pais.items():
+            if url_lower.endswith(tld) or f'{tld}/' in url_lower:
+                return pais
+        
+        # Si no se detecta, retornar None
+        return None
+    
     # ==================== SCRAPING ====================
     
     def scrape_fuente(self, fuente: Dict, limite: int = 5, guardar: bool = True, user_id: Optional[int] = None) -> List[Dict]:
@@ -797,12 +891,16 @@ class NewsScraper:
                     else:
                         resumen = resumen[:500] if len(resumen) > 500 else resumen
                     
+                    # Detectar país de la fuente
+                    pais = self._detectar_pais(fuente['url'])
+                    
                     noticia = {
                         'titulo': titulo,
                         'url': url,
                         'resumen': resumen,
                         'imagen_url': imagen_url,
                         'categoria': categoria,
+                        'pais': pais,
                         'fecha_publicacion': fecha_publicacion,
                         'fuente': fuente['nombre'],
                         'fuente_id': fuente['id']
@@ -888,11 +986,12 @@ class NewsScraper:
         offset: int = 0,
         fuente_id: Optional[int] = None,
         categoria: Optional[str] = None,
+        pais: Optional[str] = None,
         user_id: Optional[int] = None,
         es_admin: bool = False
     ):
         """Obtiene noticias guardadas en la BD. Retorna (noticias, total)"""
-        return self.db.obtener_noticias(limite, offset, fuente_id, categoria, user_id, es_admin)
+        return self.db.obtener_noticias(limite, offset, fuente_id, categoria, pais, user_id, es_admin)
     
     def contar_noticias(self, user_id: Optional[int] = None, es_admin: bool = False) -> int:
         """Cuenta el total de noticias guardadas (filtrado por usuario si no es admin)"""
@@ -905,3 +1004,7 @@ class NewsScraper:
     def obtener_categorias(self, user_id: Optional[int] = None, es_admin: bool = False) -> List[str]:
         """Obtiene todas las categorías únicas (filtrado por usuario si no es admin)"""
         return self.db.obtener_categorias(user_id, es_admin)
+    
+    def obtener_paises(self, user_id: Optional[int] = None, es_admin: bool = False) -> List[str]:
+        """Obtiene todos los países únicos (filtrado por usuario si no es admin)"""
+        return self.db.obtener_paises(user_id, es_admin)

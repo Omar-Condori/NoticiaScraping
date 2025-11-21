@@ -59,7 +59,7 @@ export default function Layout() {
             <div className="w-8 h-8 bg-gradient-to-br from-accent-primary to-accent-secondary flex items-center justify-center rounded-lg">
               <Newspaper className="w-5 h-5 text-white" />
             </div>
-            <span className="text-xl font-semibold text-white">NewsAPI</span>
+            <span className="text-xl font-semibold text-white">ScrapingNews</span>
           </div>
         </div>
 
